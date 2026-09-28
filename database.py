@@ -160,6 +160,7 @@ def ensure_enterprise_schema():
     try:
         conn.execute("PRAGMA busy_timeout=30000")
         conn.executescript("CREATE TABLE IF NOT EXISTS system_settings(key TEXT PRIMARY KEY,value TEXT,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS repayment_records(id INTEGER PRIMARY KEY AUTOINCREMENT,loan_id INTEGER NOT NULL,telegram_id INTEGER NOT NULL,amount REAL NOT NULL,txid TEXT NOT NULL,recorded_by INTEGER NOT NULL,status TEXT DEFAULT 'confirmed',created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS support_tickets(id INTEGER PRIMARY KEY AUTOINCREMENT,telegram_id INTEGER NOT NULL,subject TEXT,message TEXT NOT NULL,status TEXT DEFAULT 'open',created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,closed_at TIMESTAMP);")
+        conn.executescript("""CREATE TABLE IF NOT EXISTS notification_log (id INTEGER PRIMARY KEY AUTOINCREMENT, telegram_id INTEGER NOT NULL, notification_type TEXT NOT NULL, reference_id TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(telegram_id, notification_type, reference_id)); CREATE TABLE IF NOT EXISTS admin_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER NOT NULL, action TEXT NOT NULL, target_type TEXT, target_id INTEGER, details TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);""")
         conn.commit()
     finally:
         conn.close()
