@@ -1207,7 +1207,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 cur.execute(
                     """
-                    SELECT telegram_id, amount, repayment_period
+                    SELECT telegram_id, amount, repayment_period, status
                     FROM loan_requests
                     WHERE id = ?
                     """,
@@ -1223,7 +1223,12 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     conn.close()
                     return
 
-                telegram_id, amount, repayment_period = request
+                telegram_id, amount, repayment_period, current_status = request
+
+                if str(current_status).lower() != "pending":
+                    await query.answer("⚠️ Cette demande a déjà été traitée.", show_alert=True)
+                    conn.close()
+                    return
 
                 match = re.search(r"(\d+)", repayment_period or "")
                 if not match:
@@ -1249,6 +1254,16 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 interest = amount * interest_rate / 100 * duration_months
                 total_repayment = amount + interest
                 monthly_payment = total_repayment / duration_months
+
+                cur.execute(
+                    "UPDATE loan_requests SET status = 'approved' WHERE id = ? AND status = 'pending'",
+                    (request_id,)
+                )
+                if cur.rowcount != 1:
+                    conn.rollback()
+                    await query.answer("⚠️ Cette demande a déjà été traitée.", show_alert=True)
+                    conn.close()
+                    return
 
                 # Vérifier si le prêt existe déjà pour éviter les doublons.
                 cur.execute(
@@ -1430,33 +1445,48 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             request_id = int(data.split(":", 1)[1])
 
             conn = db()
-            conn.execute(
-                "UPDATE loan_requests SET status = 'rejected' WHERE id = ?",
-                (request_id,)
-            )
-            conn.commit()
-
             cur = conn.cursor()
+
             cur.execute(
-                "SELECT telegram_id FROM loan_requests WHERE id = ?",
+                "SELECT telegram_id, status FROM loan_requests WHERE id = ?",
                 (request_id,)
             )
             row = cur.fetchone()
+
+            if not row:
+                await query.answer("❌ Demande introuvable.", show_alert=True)
+                conn.close()
+                return
+
+            if str(row[1]).lower() != "pending":
+                await query.answer("⚠️ Cette demande a déjà été traitée.", show_alert=True)
+                conn.close()
+                return
+
+            cur.execute(
+                "UPDATE loan_requests SET status = 'rejected' WHERE id = ? AND status = 'pending'",
+                (request_id,)
+            )
+
+            if cur.rowcount != 1:
+                conn.rollback()
+                conn.close()
+                await query.answer("⚠️ Cette demande a déjà été traitée.", show_alert=True)
+                return
+
+            conn.commit()
             conn.close()
 
-            if row:
-                try:
-                    await send_notification_once(
-                        bot=context.bot,
-                        telegram_id=row[0],
-                        notification_type="loan_rejected",
-                        reference_id=str(request_id),
-                        text=(
-                            tr(row[0], "loan_rejected", request_id=request_id)
-                        ),
-                    )
-                except Exception as e:
-                    print(f"⚠️ Notification de refus impossible : {e}")
+            try:
+                await send_notification_once(
+                    bot=context.bot,
+                    telegram_id=row[0],
+                    notification_type="loan_rejected",
+                    reference_id=str(request_id),
+                    text=tr(row[0], "loan_rejected", request_id=request_id),
+                )
+            except Exception as e:
+                print(f"⚠️ Notification de refus impossible : {e}")
 
             await show_loan(query, request_id)
             return
