@@ -64,6 +64,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("👥 Comptes", callback_data="admin_users")],
         [InlineKeyboardButton("🪪 KYC en attente", callback_data="admin_kyc")],
         [InlineKeyboardButton("💰 Demandes de prêt", callback_data="admin_loans")],
+        [InlineKeyboardButton("🔔 Notifications client", callback_data="admin_notifications")],
     ])
 
     await update.message.reply_text(
@@ -588,6 +589,92 @@ async def show_loan(query, request_id):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
+
+async def show_notification_users(query):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT telegram_id, first_name, last_name, language
+        FROM users
+        ORDER BY id DESC
+    """)
+    users = cur.fetchall()
+    conn.close()
+
+    buttons = []
+
+    for telegram_id, first_name, last_name, language in users:
+        name = "{} {}".format(first_name or "", last_name or "").strip()
+        name = name or "Utilisateur"
+        lang = language or "fr"
+
+        buttons.append([
+            InlineKeyboardButton(
+                "👤 {} [{}]".format(name, lang),
+                callback_data="admin_notify_user:{}".format(telegram_id)
+            )
+        ])
+
+    await query.edit_message_text(
+        "🔔 NOTIFICATIONS CLIENT\\n\\n"
+        "Sélectionnez le client à notifier :",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
+
+
+async def show_notification_options(query, telegram_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT first_name, last_name, language
+        FROM users
+        WHERE telegram_id = ?
+    """, (telegram_id,))
+    user = cur.fetchone()
+    conn.close()
+
+    if not user:
+        await query.edit_message_text("❌ Client introuvable.")
+        return
+
+    first_name, last_name, language = user
+    name = "{} {}".format(first_name or "", last_name or "").strip()
+    name = name or "Utilisateur"
+    language = language or "fr"
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "🪪 Notifier : compléter KYC",
+            callback_data="admin_notify_kyc:{}".format(telegram_id)
+        )],
+        [InlineKeyboardButton(
+            "💰 Notifier : dossier de prêt",
+            callback_data="admin_notify_loan:{}".format(telegram_id)
+        )],
+        [InlineKeyboardButton(
+            "📋 Notifier : garantie / dossier",
+            callback_data="admin_notify_guarantee:{}".format(telegram_id)
+        )],
+        [InlineKeyboardButton(
+            "🧾 Notifier : TXID manquant",
+            callback_data="admin_notify_txid:{}".format(telegram_id)
+        )],
+        [InlineKeyboardButton(
+            "↩️ Retour",
+            callback_data="admin_notifications"
+        )]
+    ])
+
+    await query.edit_message_text(
+        "🔔 NOTIFICATION CLIENT\\n\\n"
+        "👤 Client : {}\\n"
+        "🌐 Langue : {}\\n"
+        "🆔 Telegram : {}\\n\\n"
+        "Choisissez la notification :".format(
+            name, language, telegram_id
+        ),
+        reply_markup=keyboard
+    )
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
