@@ -1,3 +1,4 @@
+from storage import DB_PATH
 import sqlite3
 from i18n import tr
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -6,38 +7,49 @@ from telegram.ext import ContextTypes
 ADMIN_ID = 8266012108
 
 
+
 async def kyc_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Enregistre la photo KYC et confirme toujours sa réception au client."""
+
     if not context.user_data.get("awaiting_kyc_photo"):
         return
 
+    if not update.message or not update.message.photo:
+        return
+
     user_id = update.effective_user.id
-    photo = update.message.photo[-1]
-    file_id = photo.file_id
+    file_id = update.message.photo[-1].file_id
 
-    conn = sqlite3.connect("loan_bot.db")
-    cur = conn.cursor()
+    conn = sqlite3.connect(DB_PATH)
 
-    cur.execute(
-        """
-        UPDATE users
-        SET kyc_photo_file_id = ?, kyc_status = 'pending'
-        WHERE telegram_id = ?
-        """,
-        (file_id, user_id)
-    )
+    try:
+        cur = conn.cursor()
 
-    cur.execute(
-        """
-        SELECT first_name, last_name, country, phone, email, profession
-        FROM users
-        WHERE telegram_id = ?
-        """,
-        (user_id,)
-    )
+        cur.execute(
+            """
+            UPDATE users
+            SET kyc_photo_file_id = ?,
+                kyc_status = 'pending'
+            WHERE telegram_id = ?
+            """,
+            (file_id, user_id)
+        )
 
-    user = cur.fetchone()
-    conn.commit()
-    conn.close()
+        cur.execute(
+            """
+            SELECT first_name, last_name, country,
+                   phone, email, profession
+            FROM users
+            WHERE telegram_id = ?
+            """,
+            (user_id,)
+        )
+
+        user = cur.fetchone()
+        conn.commit()
+
+    finally:
+        conn.close()
 
     context.user_data["awaiting_kyc_photo"] = False
 
@@ -72,17 +84,26 @@ async def kyc_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📧 Email : {email}\n"
         f"💼 Profession : {profession}\n"
         f"🆔 Telegram ID : {user_id}\n\n"
-        "⚠️ Vérification manuelle requise.\n"
-        "Vérifiez la lisibilité du document et la concordance avec les informations fournies."
+        "⚠️ Vérification manuelle requise."
     )
 
-    await context.bot.send_photo(
-        chat_id=ADMIN_ID,
-        photo=file_id,
-        caption=caption,
-        reply_markup=keyboard
-    )
+    try:
+        await context.bot.send_photo(
+            chat_id=ADMIN_ID,
+            photo=file_id,
+            caption=caption,
+            reply_markup=keyboard
+        )
 
+        print(f"✅ KYC envoyé à l'administrateur : {user_id}")
+
+    except Exception as e:
+        print(
+            f"❌ Envoi KYC admin impossible "
+            f"pour {user_id}: {e}"
+        )
+
+    # Le client reçoit toujours une confirmation
     await update.message.reply_text(
         tr(user_id, "kyc_sent")
     )
@@ -93,7 +114,6 @@ async def kyc_decision_callback(
     context: ContextTypes.DEFAULT_TYPE
 ):
     query = update.callback_query
-    await query.answer()
 
     if query.from_user.id != ADMIN_ID:
         await query.answer(
@@ -102,12 +122,14 @@ async def kyc_decision_callback(
         )
         return
 
+    await query.answer()
+
     action, user_id_text = query.data.split(":", 1)
     user_id = int(user_id_text)
 
     status = "approved" if action == "kyc_approve" else "rejected"
 
-    conn = sqlite3.connect("loan_bot.db")
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute(

@@ -1,3 +1,4 @@
+from storage import DB_PATH
 import os
 import sqlite3
 from i18n import tr

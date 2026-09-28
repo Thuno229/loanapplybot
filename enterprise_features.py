@@ -1,4 +1,5 @@
 from __future__ import annotations
+from storage import DB_PATH
 import os
 import sqlite3
 from telegram import Update

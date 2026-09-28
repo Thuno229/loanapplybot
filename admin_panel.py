@@ -1,3 +1,4 @@
+from storage import DB_PATH
 import sqlite3
 from telegram.error import BadRequest
 
@@ -14,7 +15,7 @@ from i18n import tr
 
 
 ADMIN_ID = 8266012108
-DB = "loan_bot.db"
+DB = DB_PATH
 
 
 def db():
@@ -32,7 +33,7 @@ def back_button():
 def log_admin_action(admin_id, action, target_type=None, target_id=None, details=None):
     import sqlite3
 
-    conn = sqlite3.connect("loan_bot.db")
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute(

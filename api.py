@@ -1,10 +1,11 @@
+from storage import DB_PATH
 from flask import Flask, jsonify, request
 import sqlite3
 import os
 
 app = Flask(__name__)
 
-DB = "loan_bot.db"
+DB = DB_PATH
 
 
 def get_db():

@@ -1,3 +1,4 @@
+from storage import DB_PATH, PERSISTENCE_PATH
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -3828,6 +3829,19 @@ async def admin_disbursement_router(update, context):
     await dashboard(update, context)
 
 
+
+async def registration_photo_or_kyc(update, context):
+    """
+    Si une photo KYC est attendue, elle est envoyée au flux KYC.
+    Sinon, elle continue normalement l'inscription.
+    """
+    if context.user_data.get("awaiting_kyc_photo"):
+        await kyc_photo_handler(update, context)
+        return ConversationHandler.END
+
+    return await photo(update, context)
+
+
 def main():
 
     init_database()
@@ -3935,7 +3949,7 @@ def main():
             8: [
                 MessageHandler(
                     filters.PHOTO,
-                    photo
+                    registration_photo_or_kyc
                 ),
                 MessageHandler(
                     filters.ALL & ~filters.COMMAND,

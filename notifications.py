@@ -1,3 +1,4 @@
+from storage import DB_PATH
 import sqlite3
 
 
@@ -14,7 +15,7 @@ async def send_notification_once(
     Une notification échouée peut être retentée.
     """
 
-    conn = sqlite3.connect("loan_bot.db")
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     try:
@@ -75,7 +76,7 @@ def get_client_notification_language(telegram_id):
     Récupère la langue sélectionnée par le client.
     Langues autorisées : fr, en, es, pt.
     """
-    conn = sqlite3.connect("loan_bot.db")
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     try:
