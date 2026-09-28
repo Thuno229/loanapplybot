@@ -7,3 +7,4 @@ __pycache__/
 .env
 *.before_data_*.bak
 *.before_schema_fix.bak
+*.before_final_fix.bak

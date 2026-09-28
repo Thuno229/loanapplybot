@@ -16,6 +16,7 @@ def migrate_schema(conn):
 
     migrations = {
         "users": {
+            "blocked": "INTEGER DEFAULT 0",
             "kyc_photo_file_id": "TEXT",
             "updated_at": "TIMESTAMP",
             "last_seen_at": "TIMESTAMP",
@@ -73,6 +74,7 @@ def init_database():
             trc20_address TEXT,
             bep20_address TEXT,
             kyc_status TEXT DEFAULT 'not_submitted',
+            blocked INTEGER DEFAULT 0,
             balance REAL DEFAULT 0,
             referral_code TEXT UNIQUE,
             referred_by INTEGER,
