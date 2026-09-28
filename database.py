@@ -9,6 +9,50 @@ def get_connection():
     return sqlite3.connect(DB_NAME)
 
 
+
+def migrate_schema(conn):
+    """Ajoute les colonnes manquantes sans supprimer les données existantes."""
+    conn.execute("PRAGMA busy_timeout=30000")
+
+    migrations = {
+        "users": {
+            "kyc_photo_file_id": "TEXT",
+            "updated_at": "TIMESTAMP",
+            "last_seen_at": "TIMESTAMP",
+        },
+        "loan_requests": {
+            "updated_at": "TIMESTAMP",
+            "rejection_reason": "TEXT",
+        },
+        "loans": {
+            "approved_at": "TIMESTAMP",
+            "completed_at": "TIMESTAMP",
+            "last_payment_at": "TIMESTAMP",
+        },
+        "loan_installments": {
+            "amount_paid": "REAL DEFAULT 0",
+        },
+    }
+
+    for table, columns in migrations.items():
+        existing = {
+            row[1]
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+
+        for column, definition in columns.items():
+            if column not in existing:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                )
+                print(f"✅ Colonne ajoutée : {table}.{column}")
+
+    conn.execute(
+        "UPDATE loan_installments "
+        "SET amount_paid = COALESCE(amount_paid, 0)"
+    )
+
+
 def init_database():
     conn = get_connection()
     cursor = conn.cursor()
@@ -100,6 +144,7 @@ def init_database():
         )
     """)
 
+    migrate_schema(conn)
     conn.commit()
     conn.close()
 

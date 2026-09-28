@@ -6,3 +6,4 @@ __pycache__/
 *.backup*
 .env
 *.before_data_*.bak
+*.before_schema_fix.bak
