@@ -22,6 +22,8 @@ def migrate_schema(conn):
             "last_seen_at": "TIMESTAMP",
         },
         "loan_requests": {
+            "wallet_address": "TEXT",
+            "guarantee_address": "TEXT",
             "updated_at": "TIMESTAMP",
             "rejection_reason": "TEXT",
         },
@@ -92,6 +94,8 @@ def init_database():
             repayment_period TEXT,
             status TEXT DEFAULT 'pending',
             guarantee_status TEXT DEFAULT 'not_paid',
+            wallet_address TEXT,
+            guarantee_address TEXT,
             txid TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
