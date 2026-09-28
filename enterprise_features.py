@@ -80,24 +80,24 @@ async def tickets(update:Update,context:ContextTypes.DEFAULT_TYPE):
     c=sqlite3.connect(DB)
     try: rows=c.execute('SELECT id,telegram_id,message FROM support_tickets WHERE status=\'open\' ORDER BY id DESC LIMIT 20').fetchall()
     finally: c.close()
-    if not rows: await update.message.reply_text(T['fr']['none']); return
-    await update.message.reply_text(T['fr']['tickets']+'\n\n'+'\n'.join(f"#{a} — {b} — {m[:160].replace(chr(10),' ')}" for a,b,m in rows))
+    if not rows: await update.message.reply_text(T[_lang(update)]['none']); return
+    await update.message.reply_text(T[_lang(update)]['tickets']+'\n\n'+'\n'.join(f"#{a} — {b} — {m[:160].replace(chr(10),' ')}" for a,b,m in rows))
 
 async def ticket_close(update:Update,context:ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!=ADMIN_ID: await update.message.reply_text(T[_lang(update)]['admin']); return
-    if not context.args: await update.message.reply_text(T['fr']['close']); return
+    if not context.args: await update.message.reply_text(T[_lang(update)]['close']); return
     try: i=int(context.args[0])
-    except: await update.message.reply_text(T['fr']['close']); return
+    except: await update.message.reply_text(T[_lang(update)]['close']); return
     c=sqlite3.connect(DB)
     try: cur=c.execute("UPDATE support_tickets SET status='closed',closed_at=CURRENT_TIMESTAMP WHERE id=? AND status='open'",(i,)); c.commit(); ok=cur.rowcount
     finally: c.close()
-    await update.message.reply_text(T['fr']['closed'].format(id=i) if ok else T['fr']['notfound'])
+    await update.message.reply_text(T[_lang(update)]['closed'].format(id=i) if ok else T[_lang(update)]['notfound'])
 
 async def repay(update:Update,context:ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!=ADMIN_ID: await update.message.reply_text(T[_lang(update)]['admin']); return
-    if len(context.args)<3: await update.message.reply_text(T['fr']['repay']+'\n⚠️ Enregistrement administratif uniquement.'); return
+    if len(context.args)<3: await update.message.reply_text(T[_lang(update)]['repay']+'\n⚠️ Enregistrement administratif uniquement.'); return
     try: loan_id=int(context.args[0]); amount=float(context.args[1]); txid=context.args[2].strip()
-    except: await update.message.reply_text(T['fr']['repay']); return
+    except: await update.message.reply_text(T[_lang(update)]['repay']); return
     if amount<=0 or len(txid)<6: await update.message.reply_text('❌ Montant ou TXID invalide.'); return
     c=sqlite3.connect(DB)
     try:
