@@ -12,6 +12,10 @@ from admin_panel import (
     ADMIN_ID,
 )
 import os
+
+BOT_DATA_DIR = os.getenv("BOT_DATA_DIR", ".")
+DB_PATH = os.path.join(BOT_DATA_DIR, "loan_bot.db")
+PERSISTENCE_PATH = os.path.join(BOT_DATA_DIR, "loan_bot_persistence.pkl")
 import secrets
 from datetime import date as dt_date
 from notifications import send_notification_once
@@ -939,7 +943,7 @@ TEXT["pt"]["loan_already_in_progress"] = (
 def _client_lang(update):
     try:
         uid=update.effective_user.id
-        con=sqlite3.connect("loan_bot.db")
+        con=sqlite3.connect(DB_PATH)
         row=con.execute("SELECT language FROM users WHERE telegram_id=? LIMIT 1",(uid,)).fetchone()
         con.close()
         return row[0] if row and row[0] in ("fr","en","es","pt") else "fr"
@@ -962,7 +966,7 @@ def _bt(update, key, **kwargs):
 # =========================
 
 def db():
-    return sqlite3.connect("loan_bot.db")
+    return sqlite3.connect(DB_PATH)
 
 
 def get_user(telegram_id):
@@ -1063,7 +1067,7 @@ async def send_notification_once(
     Si l'envoi Telegram échoue, l'entrée est supprimée afin
     que le bot puisse réessayer plus tard.
     """
-    conn = sqlite3.connect("loan_bot.db")
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     try:
@@ -1125,7 +1129,7 @@ async def check_due_notifications(context):
 
         today = now.date()
 
-        conn = sqlite3.connect("loan_bot.db")
+        conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
 
         cur.execute("""
@@ -1268,7 +1272,7 @@ def dashboard_keyboard(lang, user_id=None):
 
     if user_id is not None:
         try:
-            conn = sqlite3.connect("loan_bot.db")
+            conn = sqlite3.connect(DB_PATH)
             cur = conn.cursor()
 
             cur.execute(
@@ -2032,7 +2036,7 @@ async def my_loan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang = get_language(user_id)
 
-    conn = sqlite3.connect("loan_bot.db")
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute(
@@ -2270,7 +2274,7 @@ async def loan_schedule_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("❌ Données invalides.", show_alert=True)
         return
 
-    conn = sqlite3.connect("loan_bot.db")
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute(
@@ -2414,7 +2418,7 @@ async def loan_current_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("❌ Prêt invalide.", show_alert=True)
         return
 
-    conn = sqlite3.connect("loan_bot.db")
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute(
@@ -2962,7 +2966,7 @@ async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Vérifier si le client possède déjà un prêt approuvé ou actif.
         # Un prêt terminé n'empêche pas une nouvelle demande.
-        conn = sqlite3.connect("loan_bot.db")
+        conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
 
         cur.execute(
@@ -3829,7 +3833,7 @@ def main():
     init_database()
     ensure_enterprise_schema()
 
-    persistence = PicklePersistence(filepath="loan_bot_persistence.pkl", update_interval=1)
+    persistence = PicklePersistence(filepath=PERSISTENCE_PATH, update_interval=1)
     application = Application.builder().token(TOKEN).persistence(persistence).connect_timeout(30).read_timeout(30).write_timeout(30).pool_timeout(30).build()
 
     register_enterprise_handlers(application)

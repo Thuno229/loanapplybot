@@ -1,6 +1,7 @@
+import os
 import sqlite3
 
-DB = "loan_bot.db"
+DB = os.path.join(os.getenv("BOT_DATA_DIR", "."), "loan_bot.db")
 
 SUPPORTED_LANGUAGES = {"fr", "en", "es", "pt"}
 

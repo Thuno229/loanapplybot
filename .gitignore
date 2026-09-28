@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 *.backup*
 .env
+*.before_data_*.bak

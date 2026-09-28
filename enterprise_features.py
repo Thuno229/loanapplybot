@@ -1,9 +1,10 @@
 from __future__ import annotations
+import os
 import sqlite3
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler
 
-DB='loan_bot.db'
+DB=os.path.join(os.getenv("BOT_DATA_DIR", "."), "loan_bot.db")
 ADMIN_ID=8266012108
 LANGS=('fr','en','es','pt')
 T={

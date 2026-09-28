@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from i18n import tr
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, CopyTextButton
@@ -36,7 +37,7 @@ async def loan_confirm_callback(update, context):
 
     guarantee = amount * 0.15
 
-    conn = sqlite3.connect("loan_bot.db")
+    conn = sqlite3.connect(os.path.join(os.getenv("BOT_DATA_DIR", "."), "loan_bot.db"))
     cursor = conn.cursor()
 
     cursor.execute(

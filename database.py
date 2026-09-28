@@ -1,6 +1,7 @@
+import os
 import sqlite3
 
-DB_NAME = "loan_bot.db"
+DB_NAME = os.path.join(os.getenv("BOT_DATA_DIR", "."), "loan_bot.db")
 
 
 def get_connection():
