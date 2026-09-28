@@ -20,6 +20,7 @@ PERSISTENCE_PATH = os.path.join(BOT_DATA_DIR, "loan_bot_persistence.pkl")
 import secrets
 from datetime import date as dt_date
 from notifications import send_notification_once
+from i18n import get_client_language as i18n_get_client_language, TEXT as I18N_TEXT, tr as i18n_tr
 
 from telegram import (
     Update,
@@ -493,10 +494,10 @@ TEXT["pt"]["support_message"] = (
     "Escolha seu meio de contato:"
 )
 
-TEXT["fr"]["language_message"] = "🌐 Pour changer de langue, utilisez /start."
-TEXT["en"]["language_message"] = "🌐 To change your language, use /start."
-TEXT["es"]["language_message"] = "🌐 Para cambiar de idioma, utilice /start."
-TEXT["pt"]["language_message"] = "🌐 Para alterar o idioma, use /start."
+TEXT["fr"]["language_message"] = "🌐 Choisissez une langue ci-dessous pour changer la langue."
+TEXT["en"]["language_message"] = "🌐 Choose a language below to change your language."
+TEXT["es"]["language_message"] = "🌐 Elija un idioma abajo para cambiar el idioma."
+TEXT["pt"]["language_message"] = "🌐 Escolha um idioma abaixo para alterar o idioma."
 TEXT["en"]["about"] = "ℹ️ Terms & About"
 TEXT["es"]["about"] = "ℹ️ Condiciones y Acerca de"
 TEXT["pt"]["about"] = "ℹ️ Condições e Sobre"
@@ -862,7 +863,7 @@ TEXT["pt"]["referral_message"] = (
     "do programa forem cumpridas."
 )
 
-TEXT["fr"]["history_empty"] = "📋 Vous n'avez pas encore de demande de prêt."
+TEXT["fr"]["history_empty"] = _bt(update, "no_requests")
 TEXT["en"]["history_empty"] = "📋 You do not have any loan application yet."
 TEXT["es"]["history_empty"] = "📋 Aún no tiene ninguna solicitud de préstamo."
 TEXT["pt"]["history_empty"] = "📋 Você ainda não tem nenhuma solicitação de empréstimo."
@@ -943,24 +944,50 @@ TEXT["pt"]["loan_already_in_progress"] = (
     
 def _client_lang(update):
     try:
-        uid=update.effective_user.id
-        con=sqlite3.connect(DB_PATH)
-        row=con.execute("SELECT language FROM users WHERE telegram_id=? LIMIT 1",(uid,)).fetchone()
-        con.close()
-        return row[0] if row and row[0] in ("fr","en","es","pt") else "fr"
+        return i18n_get_client_language(update.effective_user.id)
     except Exception:
         return "fr"
+
 def _bt(update, key, **kwargs):
     lang = _client_lang(update)
-    text = TEXT.get(lang, TEXT["fr"]).get(
-        key,
-        TEXT["fr"].get(key, key)
-    )
+    text = TEXT.get(lang, {}).get(key)
+    if text is None:
+        text = I18N_TEXT.get(lang, {}).get(key)
+    if text is None:
+        text = I18N_TEXT.get(lang, {}).get("generic_error")
     try:
         return text.format(**kwargs)
     except (KeyError, IndexError, ValueError):
         return text
 
+
+
+async def change_existing_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Change the saved language for an already registered client."""
+    user_id = update.effective_user.id
+    mapping = {
+        "🇫🇷 Français": "fr",
+        "🇬🇧 English": "en",
+        "🇪🇸 Español": "es",
+        "🇵🇹 Português": "pt",
+    }
+    lang = mapping.get((update.message.text or "").strip())
+    if not lang:
+        await update.message.reply_text(i18n_tr(user_id, "language_invalid"), reply_markup=_registration_language_keyboard())
+        return
+
+    conn = db()
+    try:
+        conn.execute("UPDATE users SET language = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?", (lang, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+    context.user_data["language"] = lang
+    await update.message.reply_text(
+        i18n_tr(user_id, "language_changed") + "\n\n" + TEXT[lang]["dashboard_menu"],
+        reply_markup=dashboard_keyboard(lang, user_id),
+    )
 
 # =========================
 # BASE DE DONNÉES
@@ -1192,14 +1219,11 @@ async def check_due_notifications(context):
             if days_until_due == 3:
                 notification_type = "installment_due_3d"
 
-                message = (
-                    "🔔 RAPPEL D'ÉCHÉANCE\n\n"
-                    f"💳 Prêt : #{loan_id}\n"
-                    f"📄 Échéance n° : {installment_number}\n"
-                    f"📅 Date : {due_date.isoformat()}\n"
-                    f"💰 Montant : {float(installment_amount):.2f} USDT\n\n"
-                    "Votre échéance est prévue dans 3 jours.\n\n"
-                    "Consultez votre espace pour les détails."
+                message = i18n_tr(
+                    telegram_id, "due_3d", loan_id=loan_id,
+                    installment_number=installment_number,
+                    due_date=due_date.isoformat(),
+                    amount=float(installment_amount),
                 )
 
             # =========================
@@ -1208,13 +1232,10 @@ async def check_due_notifications(context):
             elif days_until_due == 0:
                 notification_type = "installment_due_today"
 
-                message = (
-                    "📅 ÉCHÉANCE AUJOURD'HUI\n\n"
-                    f"💳 Prêt : #{loan_id}\n"
-                    f"📄 Échéance n° : {installment_number}\n"
-                    f"💰 Montant : {float(installment_amount):.2f} USDT\n\n"
-                    "Cette échéance arrive aujourd'hui.\n"
-                    "Consultez votre espace pour les détails."
+                message = i18n_tr(
+                    telegram_id, "due_today", loan_id=loan_id,
+                    installment_number=installment_number,
+                    amount=float(installment_amount),
                 )
 
             # =========================
@@ -1223,14 +1244,11 @@ async def check_due_notifications(context):
             elif days_until_due == -1:
                 notification_type = "installment_overdue_1d"
 
-                message = (
-                    "⚠️ ÉCHÉANCE EN RETARD\n\n"
-                    f"💳 Prêt : #{loan_id}\n"
-                    f"📄 Échéance n° : {installment_number}\n"
-                    f"📅 Date prévue : {due_date.isoformat()}\n"
-                    f"💰 Montant : {float(installment_amount):.2f} USDT\n\n"
-                    "Cette échéance est maintenant en retard.\n"
-                    "Consultez votre espace pour les détails."
+                message = i18n_tr(
+                    telegram_id, "due_overdue", loan_id=loan_id,
+                    installment_number=installment_number,
+                    due_date=due_date.isoformat(),
+                    amount=float(installment_amount),
                 )
 
             if not notification_type or not message:
@@ -1965,13 +1983,10 @@ async def bep20(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=referred_by,
-                text=(
-                    "🎉 NOUVEAU FILLEUL !\n\n"
-                    f"👤 {user.first_name} vient de s'inscrire avec votre lien.\n\n"
-                    "🎁 Parrainage enregistré avec succès.\n"
-                    "💰 Récompense potentielle : 5 USDT\n"
-                    "⏳ Statut : en attente des conditions du programme.\n\n"
-                    "📊 Votre compteur a été mis à jour automatiquement."
+                text=i18n_tr(
+                    referred_by,
+                    "referral_new_user",
+                    name=user.first_name or "Client",
                 ),
             )
         except Exception:
@@ -1989,12 +2004,10 @@ async def bep20(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if referrer:
             referrer_name = referrer[0] or "Votre parrain"
-            referral_message = (
-                f"\n\n🎁 PARRAINAGE ENREGISTRÉ !\n"
-                f"👤 Votre parrain : {referrer_name}\n"
-                f"✅ Votre inscription a bien été associée à son lien.\n"
-                f"💰 Récompense potentielle du parrain : 5 USDT\n"
-                f"⏳ Statut : en attente des conditions du programme."
+            referral_message = "\n\n" + i18n_tr(
+                update.effective_user.id,
+                "referral_linked",
+                name=referrer_name,
             )
         else:
             referral_message = ""
@@ -2073,7 +2086,7 @@ async def my_loan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not loan:
         await update.message.reply_text(
-            "ℹ️ Aucun prêt approuvé ou en cours n'est actuellement associé à votre compte.",
+            _bt(update, "no_approved_loan"),
             reply_markup=dashboard_keyboard(lang, user_id),
         )
         return
@@ -2293,7 +2306,7 @@ async def loan_schedule_callback(update: Update, context: ContextTypes.DEFAULT_T
     if not loan:
         conn.close()
         await query.edit_message_text(
-            "❌ Ce prêt n'est pas associé à votre compte."
+            _bt(update, "loan_not_associated")
         )
         return
 
@@ -2453,7 +2466,7 @@ async def loan_current_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not loan:
         await query.edit_message_text(
-            "❌ Ce prêt n'est pas associé à votre compte."
+            _bt(update, "loan_not_associated")
         )
         return
 
@@ -2546,7 +2559,7 @@ async def loan_current_callback(update: Update, context: ContextTypes.DEFAULT_TY
 async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("awaiting_network"):
         await update.message.reply_text(
-            "⚠️ Veuillez sélectionner votre réseau en appuyant sur TRC20 ou BEP20."
+            _bt(update, "network_select")
         )
         return
 
@@ -3032,7 +3045,7 @@ async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
         await update.message.reply_text(
-            "📋 Vous n'avez pas encore de demande de prêt."
+            _bt(update, "no_requests")
         )
 
     # =====================================================
@@ -3717,7 +3730,8 @@ Informações, condições e segurança."""
     elif text == t["language"]:
 
         await update.message.reply_text(
-            _bt(update, "language_message")
+            i18n_tr(update.effective_user.id, "language_prompt"),
+            reply_markup=_registration_language_keyboard(),
         )
 
     else:
@@ -3811,7 +3825,7 @@ async def loan_network_callback(update: Update, context: ContextTypes.DEFAULT_TY
         )
     }
 
-    message = messages.get(lang, messages["fr"])
+    message = messages[lang]
     await query.edit_message_text(message)
 
 
@@ -4035,6 +4049,13 @@ def main():
             & filters.TEXT
             & ~filters.COMMAND,
             admin_disbursement_router
+        )
+    )
+
+    application.add_handler(
+        MessageHandler(
+            filters.Regex(r"^(🇫🇷 Français|🇬🇧 English|🇪🇸 Español|🇵🇹 Português)$"),
+            change_existing_language,
         )
     )
 

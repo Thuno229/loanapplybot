@@ -1,8 +1,7 @@
 from storage import DB_PATH
-import os
 import sqlite3
 
-DB = os.path.join(os.getenv("BOT_DATA_DIR", "."), "loan_bot.db")
+DB = DB_PATH
 
 SUPPORTED_LANGUAGES = {"fr", "en", "es", "pt"}
 
@@ -280,14 +279,105 @@ TEXT["es"]["loan_rejected"] = "❌ Su solicitud de préstamo #{request_id} ha si
 TEXT["pt"]["loan_rejected"] = "❌ O seu pedido de empréstimo #{request_id} foi rejeitado.\n\nA decisão foi registada no seu processo.\n\n📞 Para qualquer questão, contacte o suporte."
 
 
+
+# ===== GLOBAL CLIENT-SAFE TRANSLATIONS =====
+_GLOBAL_CLIENT_TEXT = {
+    'fr': {
+        'generic_error': "⚠️ Impossible d'afficher ce message pour le moment.",
+        'language_prompt': '🌐 Choisissez votre langue :',
+        'language_changed': '✅ Langue mise à jour.',
+        'language_invalid': '🌐 Veuillez choisir une langue avec l’un des boutons ci-dessous.',
+        'loan_not_associated': "❌ Ce prêt n'est pas associé à votre compte.",
+        'no_approved_loan': "ℹ️ Aucun prêt approuvé ou en cours n'est actuellement associé à votre compte.",
+        'no_schedule': "📅 ÉCHÉANCIER\n\nAucune échéance n'est encore enregistrée.",
+        'network_select': '⚠️ Veuillez sélectionner votre réseau en appuyant sur TRC20 ou BEP20.',
+        'invalid_txid': '❌ TXID invalide.\n\nEnvoyez uniquement le TXID/hash de la transaction, sans espace.',
+        'invalid_amount': '❌ Veuillez entrer uniquement un montant en USDT.\n\nExemple : 500',
+        'no_requests': "📋 Vous n'avez pas encore de demande de prêt.",
+        'referral_new_user': "🎉 NOUVEAU FILLEUL !\n\n👤 {name} vient de s'inscrire avec votre lien.\n\n🎁 Parrainage enregistré avec succès.\n💰 Récompense potentielle : 5 USDT\n⏳ Statut : en attente des conditions du programme.",
+        'referral_linked': '🎁 PARRAINAGE ENREGISTRÉ !\n👤 Votre parrain : {name}\n✅ Votre inscription a bien été associée à son lien.\n💰 Récompense potentielle du parrain : 5 USDT\n⏳ Statut : en attente des conditions du programme.',
+        'active_loan_button': '💳 Mon prêt en cours',
+        'due_3d': "🔔 RAPPEL D'ÉCHÉANCE\n\n💳 Prêt : #{loan_id}\n📄 Échéance n° : {installment_number}\n📅 Date : {due_date}\n💰 Montant : {amount:.2f} USDT\n\nVotre échéance est prévue dans 3 jours.\n\nConsultez votre espace pour les détails.",
+        'due_today': "📅 ÉCHÉANCE AUJOURD'HUI\n\n💳 Prêt : #{loan_id}\n📄 Échéance n° : {installment_number}\n💰 Montant : {amount:.2f} USDT\n\nCette échéance arrive aujourd'hui.\nConsultez votre espace pour les détails.",
+        'due_overdue': '⚠️ ÉCHÉANCE EN RETARD\n\n💳 Prêt : #{loan_id}\n📄 Échéance n° : {installment_number}\n📅 Date prévue : {due_date}\n💰 Montant : {amount:.2f} USDT\n\nCette échéance est maintenant en retard.\nConsultez votre espace pour les détails.',
+    },
+    'en': {
+        'generic_error': '⚠️ Unable to display this message right now.',
+        'language_prompt': '🌐 Choose your language:',
+        'language_changed': '✅ Language updated.',
+        'language_invalid': '🌐 Please choose a language using one of the buttons below.',
+        'loan_not_associated': '❌ This loan is not associated with your account.',
+        'no_approved_loan': 'ℹ️ No approved or active loan is currently associated with your account.',
+        'no_schedule': '📅 REPAYMENT SCHEDULE\n\nNo installment is currently recorded.',
+        'network_select': '⚠️ Please select your network by pressing TRC20 or BEP20.',
+        'invalid_txid': '❌ Invalid TXID.\n\nSend only the transaction TXID/hash, without spaces.',
+        'invalid_amount': '❌ Please enter a USDT amount only.\n\nExample: 500',
+        'no_requests': '📋 You do not have any loan applications yet.',
+        'referral_new_user': '🎉 NEW REFERRAL!\n\n👤 {name} just registered using your link.\n\n🎁 Referral recorded successfully.\n💰 Potential reward: 5 USDT\n⏳ Status: waiting for the program conditions.',
+        'referral_linked': '🎁 REFERRAL RECORDED!\n👤 Your referrer: {name}\n✅ Your registration has been linked to their referral.\n💰 Potential referrer reward: 5 USDT\n⏳ Status: waiting for the program conditions.',
+        'active_loan_button': '💳 My active loan',
+        'due_3d': '🔔 PAYMENT REMINDER\n\n💳 Loan: #{loan_id}\n📄 Installment: #{installment_number}\n📅 Date: {due_date}\n💰 Amount: {amount:.2f} USDT\n\nYour installment is due in 3 days.\n\nOpen your account for details.',
+        'due_today': '📅 PAYMENT DUE TODAY\n\n💳 Loan: #{loan_id}\n📄 Installment: #{installment_number}\n💰 Amount: {amount:.2f} USDT\n\nThis installment is due today.\nOpen your account for details.',
+        'due_overdue': '⚠️ OVERDUE PAYMENT\n\n💳 Loan: #{loan_id}\n📄 Installment: #{installment_number}\n📅 Due date: {due_date}\n💰 Amount: {amount:.2f} USDT\n\nThis installment is now overdue.\nOpen your account for details.',
+    },
+    'es': {
+        'generic_error': '⚠️ No se puede mostrar este mensaje en este momento.',
+        'language_prompt': '🌐 Elige tu idioma:',
+        'language_changed': '✅ Idioma actualizado.',
+        'language_invalid': '🌐 Elige un idioma con uno de los botones siguientes.',
+        'loan_not_associated': '❌ Este préstamo no está asociado a tu cuenta.',
+        'no_approved_loan': 'ℹ️ No hay ningún préstamo aprobado o activo asociado actualmente a tu cuenta.',
+        'no_schedule': '📅 CALENDARIO DE PAGOS\n\nTodavía no hay ninguna cuota registrada.',
+        'network_select': '⚠️ Selecciona tu red pulsando TRC20 o BEP20.',
+        'invalid_txid': '❌ TXID no válido.\n\nEnvía únicamente el TXID/hash de la transacción, sin espacios.',
+        'invalid_amount': '❌ Introduce únicamente un importe en USDT.\n\nEjemplo: 500',
+        'no_requests': '📋 Todavía no tienes ninguna solicitud de préstamo.',
+        'referral_new_user': '🎉 ¡NUEVO REFERIDO!\n\n👤 {name} acaba de registrarse con tu enlace.\n\n🎁 Referido registrado correctamente.\n💰 Recompensa potencial: 5 USDT\n⏳ Estado: esperando las condiciones del programa.',
+        'referral_linked': '🎁 ¡REFERIDO REGISTRADO!\n👤 Tu referente: {name}\n✅ Tu registro se ha asociado a su enlace.\n💰 Recompensa potencial del referente: 5 USDT\n⏳ Estado: esperando las condiciones del programa.',
+        'active_loan_button': '💳 Mi préstamo activo',
+        'due_3d': '🔔 RECORDATORIO DE PAGO\n\n💳 Préstamo: #{loan_id}\n📄 Cuota: #{installment_number}\n📅 Fecha: {due_date}\n💰 Importe: {amount:.2f} USDT\n\nTu cuota vence en 3 días.\n\nConsulta tu cuenta para más detalles.',
+        'due_today': '📅 PAGO VENCE HOY\n\n💳 Préstamo: #{loan_id}\n📄 Cuota: #{installment_number}\n💰 Importe: {amount:.2f} USDT\n\nEsta cuota vence hoy.\nConsulta tu cuenta para más detalles.',
+        'due_overdue': '⚠️ PAGO VENCIDO\n\n💳 Préstamo: #{loan_id}\n📄 Cuota: #{installment_number}\n📅 Fecha de vencimiento: {due_date}\n💰 Importe: {amount:.2f} USDT\n\nEsta cuota está vencida.\nConsulta tu cuenta para más detalles.',
+    },
+    'pt': {
+        'generic_error': '⚠️ Não foi possível apresentar esta mensagem neste momento.',
+        'language_prompt': '🌐 Escolha o seu idioma:',
+        'language_changed': '✅ Idioma atualizado.',
+        'language_invalid': '🌐 Escolha um idioma usando um dos botões abaixo.',
+        'loan_not_associated': '❌ Este empréstimo não está associado à sua conta.',
+        'no_approved_loan': 'ℹ️ Nenhum empréstimo aprovado ou ativo está atualmente associado à sua conta.',
+        'no_schedule': '📅 PLANO DE PAGAMENTOS\n\nAinda não há nenhuma prestação registada.',
+        'network_select': '⚠️ Selecione a sua rede pressionando TRC20 ou BEP20.',
+        'invalid_txid': '❌ TXID inválido.\n\nEnvie apenas o TXID/hash da transação, sem espaços.',
+        'invalid_amount': '❌ Introduza apenas um valor em USDT.\n\nExemplo: 500',
+        'no_requests': '📋 Ainda não tem nenhum pedido de empréstimo.',
+        'referral_new_user': '🎉 NOVA REFERÊNCIA!\n\n👤 {name} acabou de se registar através do seu link.\n\n🎁 Referência registada com sucesso.\n💰 Recompensa potencial: 5 USDT\n⏳ Estado: aguardando as condições do programa.',
+        'referral_linked': '🎁 REFERÊNCIA REGISTADA!\n👤 O seu referente: {name}\n✅ O seu registo foi associado ao respetivo link.\n💰 Recompensa potencial do referente: 5 USDT\n⏳ Estado: aguardando as condições do programa.',
+        'active_loan_button': '💳 Meu empréstimo ativo',
+        'due_3d': '🔔 LEMBRETE DE PAGAMENTO\n\n💳 Empréstimo: #{loan_id}\n📄 Prestação: #{installment_number}\n📅 Data: {due_date}\n💰 Valor: {amount:.2f} USDT\n\nA sua prestação vence em 3 dias.\n\nConsulte a sua conta para mais detalhes.',
+        'due_today': '📅 PAGAMENTO VENCE HOJE\n\n💳 Empréstimo: #{loan_id}\n📄 Prestação: #{installment_number}\n💰 Valor: {amount:.2f} USDT\n\nEsta prestação vence hoje.\nConsulte a sua conta para mais detalhes.',
+        'due_overdue': '⚠️ PAGAMENTO EM ATRASO\n\n💳 Empréstimo: #{loan_id}\n📄 Prestação: #{installment_number}\n📅 Data de vencimento: {due_date}\n💰 Valor: {amount:.2f} USDT\n\nEsta prestação está em atraso.\nConsulte a sua conta para mais detalhes.',
+    },
+}
+for _lang, _values in _GLOBAL_CLIENT_TEXT.items():
+    TEXT[_lang].update(_values)
+    TEXT[_lang].update(_values)
+
 def tr(telegram_id, key, **kwargs):
     """Retourne le texte client dans la langue enregistrée."""
     lang = get_client_language(telegram_id)
 
-    text = TEXT.get(lang, TEXT["fr"]).get(key)
+    language_texts = TEXT.get(lang, {})
+    text = language_texts.get(key)
+
+    # Never fall back to French for a non-French client.
+    # A missing translation uses a generic message in the client language.
+    if text is None:
+        text = language_texts.get("generic_error")
+        print(f"⚠️ Missing translation: lang={lang}, key={key}")
 
     if text is None:
-        text = TEXT["fr"].get(key, key)
+        text = "⚠️ Unable to display this message right now." if lang == "en" else "⚠️ Impossible d'afficher ce message pour le moment."
 
     try:
         return text.format(**kwargs)

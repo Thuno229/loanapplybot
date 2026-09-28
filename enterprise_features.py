@@ -5,7 +5,7 @@ import sqlite3
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler
 
-DB=os.path.join(os.getenv("BOT_DATA_DIR", "."), "loan_bot.db")
+DB=DB_PATH
 ADMIN_ID=8266012108
 LANGS=('fr','en','es','pt')
 T={
@@ -46,7 +46,15 @@ async def schedule(update:Update,context:ContextTypes.DEFAULT_TYPE):
         loan=c.execute("SELECT id FROM loans WHERE telegram_id=? AND status NOT IN('rejected','cancelled') ORDER BY id DESC LIMIT 1",(update.effective_user.id,)).fetchone()
         rows=c.execute('SELECT installment_number,due_date,amount,status FROM loan_installments WHERE loan_id=? ORDER BY installment_number',(loan[0],)).fetchall() if loan else []
     finally: c.close()
-    if not rows: await update.message.reply_text(T[l]['schedule']+'\n\nNo schedule available.'); return
+    if not rows:
+        empty_schedule = {
+            "fr": "📅 Échéancier\n\nAucune échéance n\'est encore enregistrée.",
+            "en": "📅 Repayment schedule\n\nNo installment is currently recorded.",
+            "es": "📅 Calendario de pagos\n\nTodavía no hay cuotas registradas.",
+            "pt": "📅 Calendário de pagamentos\n\nAinda não há prestações registadas.",
+        }
+        await update.message.reply_text(empty_schedule[l])
+        return
     await update.message.reply_text(T[l]['schedule']+f' #{loan[0]}\n\n'+'\n'.join(f'#{a} — {b or "-"} — {c:.2f} USDT — {d}' for a,b,c,d in rows[:25]))
 
 async def support(update:Update,context:ContextTypes.DEFAULT_TYPE):

@@ -1413,7 +1413,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         )
                     ),
                     reply_markup=ReplyKeyboardMarkup(
-                        [["💳 Mon prêt en cours"]],
+                        [[tr(telegram_id, "active_loan_button")]],
                         resize_keyboard=True,
                     ),
                 )

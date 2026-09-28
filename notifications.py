@@ -1,5 +1,6 @@
 from storage import DB_PATH
 import sqlite3
+from i18n import get_client_language
 
 
 async def send_notification_once(
@@ -72,26 +73,8 @@ async def send_notification_once(
 # =========================================================
 
 def get_client_notification_language(telegram_id):
-    """
-    Récupère la langue sélectionnée par le client.
-    Langues autorisées : fr, en, es, pt.
-    """
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-
-    try:
-        cur.execute(
-            "SELECT language FROM users WHERE telegram_id = ?",
-            (int(telegram_id),)
-        )
-        row = cur.fetchone()
-    finally:
-        conn.close()
-
-    if not row or row[0] not in ("fr", "en", "es", "pt"):
-        return "fr"
-
-    return row[0]
+    """Use the same canonical language resolver as the rest of the bot."""
+    return get_client_language(telegram_id)
 
 
 ADMIN_NOTIFICATION_TEMPLATES = {
@@ -274,7 +257,7 @@ async def send_admin_notification(bot, telegram_id, notification_type):
             f"Type de notification inconnu : {notification_type}"
         )
 
-    message = templates.get(language, templates["fr"])
+    message = templates.get(language) or templates.get("en") or next(iter(templates.values()))
 
     import time
     reference_id = f"admin_{notification_type}_{time.time_ns()}"
