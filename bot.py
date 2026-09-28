@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from datetime import timezone, timedelta
 import sqlite3
 from loan_callbacks import loan_confirm_callback, loan_cancel_callback, loan_guarantee_sent_callback, loan_conditions_accept_callback, verify_guarantee_address_callback
