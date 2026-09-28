@@ -863,7 +863,7 @@ TEXT["pt"]["referral_message"] = (
     "do programa forem cumpridas."
 )
 
-TEXT["fr"]["history_empty"] = _bt(update, "no_requests")
+TEXT["fr"]["history_empty"] = "📋 Vous n’avez encore aucune demande de prêt."
 TEXT["en"]["history_empty"] = "📋 You do not have any loan application yet."
 TEXT["es"]["history_empty"] = "📋 Aún no tiene ninguna solicitud de préstamo."
 TEXT["pt"]["history_empty"] = "📋 Você ainda não tem nenhuma solicitação de empréstimo."
