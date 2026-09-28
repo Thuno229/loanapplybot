@@ -28,6 +28,7 @@ def migrate_schema(conn):
             "rejection_reason": "TEXT",
         },
         "loans": {
+            "disbursement_recipient": "TEXT",
             "approved_at": "TIMESTAMP",
             "completed_at": "TIMESTAMP",
             "last_payment_at": "TIMESTAMP",
