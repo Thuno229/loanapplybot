@@ -26,6 +26,8 @@ def migrate_schema(conn):
             "guarantee_address": "TEXT",
             "updated_at": "TIMESTAMP",
             "rejection_reason": "TEXT",
+            "current_stage": "TEXT DEFAULT 'received'",
+            "stage_updated_at": "TIMESTAMP",
         },
         "loans": {
             "disbursement_recipient": "TEXT",
@@ -54,6 +56,11 @@ def migrate_schema(conn):
     conn.execute(
         "UPDATE loan_installments "
         "SET amount_paid = COALESCE(amount_paid, 0)"
+    )
+    conn.execute(
+        "UPDATE loan_requests "
+        "SET current_stage = COALESCE(NULLIF(current_stage, ''), 'received') "
+        "WHERE current_stage IS NULL OR current_stage = ''"
     )
 
 
@@ -98,6 +105,8 @@ def init_database():
             wallet_address TEXT,
             guarantee_address TEXT,
             txid TEXT,
+            current_stage TEXT DEFAULT 'received',
+            stage_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -156,11 +165,43 @@ def init_database():
     conn.close()
 
 
+def record_loan_stage(conn, request_id, stage, changed_by=None, note=None):
+    """Met à jour l'étape du dossier et ajoute une entrée d'historique.
+    Utilise la connexion fournie pour rester atomique avec l'action appelante.
+    """
+    row = conn.execute(
+        "SELECT telegram_id FROM loan_requests WHERE id = ?",
+        (request_id,),
+    ).fetchone()
+    if not row:
+        return None
+
+    telegram_id = row[0]
+    conn.execute(
+        """
+        UPDATE loan_requests
+        SET current_stage = ?, stage_updated_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (stage, request_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO loan_stage_history
+        (loan_request_id, telegram_id, stage, note, changed_by)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (request_id, telegram_id, stage, note, changed_by),
+    )
+    return telegram_id
+
+
 def ensure_enterprise_schema():
     conn = get_connection()
     try:
         conn.execute("PRAGMA busy_timeout=30000")
-        conn.executescript("CREATE TABLE IF NOT EXISTS system_settings(key TEXT PRIMARY KEY,value TEXT,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS repayment_records(id INTEGER PRIMARY KEY AUTOINCREMENT,loan_id INTEGER NOT NULL,telegram_id INTEGER NOT NULL,amount REAL NOT NULL,txid TEXT NOT NULL,recorded_by INTEGER NOT NULL,status TEXT DEFAULT 'confirmed',created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS support_tickets(id INTEGER PRIMARY KEY AUTOINCREMENT,telegram_id INTEGER NOT NULL,subject TEXT,message TEXT NOT NULL,status TEXT DEFAULT 'open',created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,closed_at TIMESTAMP);")
+        conn.executescript("CREATE TABLE IF NOT EXISTS loan_stage_history(id INTEGER PRIMARY KEY AUTOINCREMENT, loan_request_id INTEGER NOT NULL, telegram_id INTEGER NOT NULL, stage TEXT NOT NULL, note TEXT, changed_by INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS system_settings(key TEXT PRIMARY KEY,value TEXT,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS repayment_records(id INTEGER PRIMARY KEY AUTOINCREMENT,loan_id INTEGER NOT NULL,telegram_id INTEGER NOT NULL,amount REAL NOT NULL,txid TEXT NOT NULL,recorded_by INTEGER NOT NULL,status TEXT DEFAULT 'confirmed',created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS support_tickets(id INTEGER PRIMARY KEY AUTOINCREMENT,telegram_id INTEGER NOT NULL,subject TEXT,message TEXT NOT NULL,status TEXT DEFAULT 'open',created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,closed_at TIMESTAMP);")
         conn.executescript("""CREATE TABLE IF NOT EXISTS notification_log (id INTEGER PRIMARY KEY AUTOINCREMENT, telegram_id INTEGER NOT NULL, notification_type TEXT NOT NULL, reference_id TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(telegram_id, notification_type, reference_id)); CREATE TABLE IF NOT EXISTS admin_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER NOT NULL, action TEXT NOT NULL, target_type TEXT, target_id INTEGER, details TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);""")
         conn.commit()
     finally:

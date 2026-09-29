@@ -2,6 +2,7 @@ from storage import DB_PATH
 import os
 import sqlite3
 from i18n import tr
+from database import record_loan_stage
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, CopyTextButton
 
 ADMIN_ID = 8266012108
@@ -45,8 +46,9 @@ async def loan_confirm_callback(update, context):
         """
         INSERT INTO loan_requests
         (telegram_id, amount, guarantee, network, repayment_period,
-         status, guarantee_status, wallet_address, guarantee_address, txid)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         status, guarantee_status, wallet_address, guarantee_address, txid,
+         current_stage, stage_updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """,
         (
             user_id,
@@ -58,11 +60,41 @@ async def loan_confirm_callback(update, context):
             "not_paid",
             wallet,
             guarantee_address,
-            txid
+            txid,
+            "received"
         )
     )
 
     request_id = cursor.lastrowid
+    # Initialise l'historique du dossier sans générer de notifications inutiles.
+    record_loan_stage(
+        conn,
+        request_id,
+        "received",
+        changed_by=user_id,
+        note="Demande reçue",
+    )
+    record_loan_stage(
+        conn,
+        request_id,
+        "verification",
+        changed_by=user_id,
+        note="Vérification du profil",
+    )
+    record_loan_stage(
+        conn,
+        request_id,
+        "kyc_approved",
+        changed_by=user_id,
+        note="KYC déjà validé",
+    )
+    record_loan_stage(
+        conn,
+        request_id,
+        "analysis",
+        changed_by=user_id,
+        note="Dossier transmis pour analyse",
+    )
     conn.commit()
     conn.close()
 

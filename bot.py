@@ -181,6 +181,10 @@ TEXT["fr"]["current_loan"] = "💳 Mon prêt en cours"
 TEXT["en"]["current_loan"] = "💳 My active loan"
 TEXT["es"]["current_loan"] = "💳 Mi préstamo activo"
 TEXT["pt"]["current_loan"] = "💳 Meu empréstimo ativo"
+TEXT["fr"]["tracking"] = "📊 Suivi du dossier"
+TEXT["en"]["tracking"] = "📊 Application tracking"
+TEXT["es"]["tracking"] = "📊 Seguimiento de la solicitud"
+TEXT["pt"]["tracking"] = "📊 Acompanhamento do pedido"
 TEXT["fr"]["about"] = "ℹ️ Conditions & À-propos"
 
 
@@ -1312,6 +1316,8 @@ def dashboard_keyboard(lang, user_id=None):
         except Exception as e:
             print(f"⚠️ Vérification du prêt impossible : {e}")
 
+    rows.append([t["tracking"]])
+
     if has_loan:
         rows.append([t["current_loan"], t["history"]])
     else:
@@ -2270,6 +2276,174 @@ async def my_loan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def loan_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Affiche l'étape actuelle et l'historique du dernier dossier du client."""
+    user_id = update.effective_user.id
+    lang = get_language(user_id)
+
+    stage_labels = {
+        "fr": {
+            "received": "📥 Demande reçue",
+            "verification": "🔍 Vérification du profil",
+            "kyc_pending": "🪪 KYC en cours",
+            "kyc_approved": "🟢 KYC validé",
+            "kyc_rejected": "❌ KYC rejeté",
+            "analysis": "📋 Analyse du dossier",
+            "approved": "✅ Demande approuvée",
+            "disbursement": "💸 Décaissement en cours",
+            "disbursed": "💰 Décaissement effectué",
+            "rejected": "❌ Demande rejetée",
+            "completed": "🏁 Remboursement terminé",
+        },
+        "en": {
+            "received": "📥 Application received",
+            "verification": "🔍 Profile verification",
+            "kyc_pending": "🪪 KYC in progress",
+            "kyc_approved": "🟢 KYC approved",
+            "analysis": "📋 Application under review",
+            "approved": "✅ Application approved",
+            "disbursement": "💸 Disbursement in progress",
+            "disbursed": "💰 Disbursement completed",
+            "rejected": "❌ Application rejected",
+            "completed": "🏁 Repayment completed",
+        },
+        "es": {
+            "received": "📥 Solicitud recibida",
+            "verification": "🔍 Verificación del perfil",
+            "kyc_pending": "🪪 KYC en curso",
+            "kyc_approved": "🟢 KYC aprobado",
+            "analysis": "📋 Solicitud en análisis",
+            "approved": "✅ Solicitud aprobada",
+            "disbursement": "💸 Desembolso en curso",
+            "disbursed": "💰 Desembolso efectuado",
+            "rejected": "❌ Solicitud rechazada",
+            "completed": "🏁 Reembolso terminado",
+        },
+        "pt": {
+            "received": "📥 Pedido recebido",
+            "verification": "🔍 Verificação do perfil",
+            "kyc_pending": "🪪 KYC em curso",
+            "kyc_approved": "🟢 KYC aprovado",
+            "analysis": "📋 Pedido em análise",
+            "approved": "✅ Pedido aprovado",
+            "disbursement": "💸 Desembolso em curso",
+            "disbursed": "💰 Desembolso efetuado",
+            "rejected": "❌ Pedido rejeitado",
+            "completed": "🏁 Reembolso concluído",
+        },
+    }
+    labels = stage_labels.get(lang, stage_labels["fr"])
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, amount, status, current_stage, stage_updated_at, created_at
+        FROM loan_requests
+        WHERE telegram_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (user_id,),
+    )
+    request = cur.fetchone()
+
+    if not request:
+        conn.close()
+        await update.message.reply_text(
+            _bt(update, "no_requests"),
+            reply_markup=dashboard_keyboard(lang, user_id),
+        )
+        return
+
+    request_id, amount, request_status, current_stage, stage_updated_at, created_at = request
+    current_stage = current_stage or "received"
+
+    cur.execute(
+        """
+        SELECT stage, note, changed_by, created_at
+        FROM loan_stage_history
+        WHERE loan_request_id = ?
+        ORDER BY id DESC
+        LIMIT 10
+        """,
+        (request_id,),
+    )
+    history = cur.fetchall()
+    conn.close()
+
+    # Les étapes principales restent dans l'ordre demandé par le système.
+    ordered = [
+        "received",
+        "verification",
+        "kyc_pending",
+        "kyc_approved",
+        "analysis",
+        "approved",
+        "disbursement",
+        "disbursed",
+    ]
+
+    if current_stage == "kyc_rejected":
+        checklist = [
+            "🟢 " + labels["received"],
+            "🟢 " + labels["verification"],
+            "❌ " + labels["kyc_rejected"],
+        ]
+    elif current_stage == "rejected":
+        checklist = [
+            "🟢 " + labels["received"],
+            "🟢 " + labels["verification"],
+            "🟢 " + labels["kyc_pending"],
+            "🟢 " + labels["kyc_approved"],
+            "🟢 " + labels["analysis"],
+            "❌ " + labels["rejected"],
+        ]
+    elif current_stage == "completed":
+        checklist = [
+            "🟢 " + labels[stage] for stage in ordered
+        ] + ["🟢 " + labels["completed"]]
+    else:
+        try:
+            current_index = ordered.index(current_stage)
+        except ValueError:
+            current_index = 0
+
+        checklist = []
+        for index, stage in enumerate(ordered):
+            if index < current_index:
+                prefix = "🟢"
+            elif index == current_index:
+                prefix = "🟡"
+            else:
+                prefix = "⚪"
+            checklist.append(f"{prefix} {labels[stage]}")
+
+    status_label = labels.get(current_stage, str(request_status or current_stage))
+    text = (
+        "📊 ÉTAT DE MON DOSSIER\n\n"
+        f"🆔 Demande : #{request_id}\n"
+        f"💰 Montant : {float(amount):g} USDT\n\n"
+        "📌 Étape actuelle :\n"
+        + "\n".join(checklist)
+        + "\n\n"
+        f"📅 Dernière mise à jour :\n{stage_updated_at or created_at or '-'}\n\n"
+        f"ℹ️ Statut : {status_label}"
+    )
+
+    if history:
+        text += "\n\n🕘 HISTORIQUE\n"
+        for stage, note, changed_by, created_at in reversed(history):
+            label = labels.get(stage, stage)
+            suffix = f" — {note}" if note else ""
+            text += f"{created_at or '-'} — {label}{suffix}\n"
+
+    await update.message.reply_text(
+        text,
+        reply_markup=dashboard_keyboard(lang, user_id),
+    )
+
+
 async def loan_schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -3041,12 +3215,14 @@ async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(_bt(update, "loan_amount_prompt"))
         return
 
+    elif text == t["tracking"]:
+        await loan_tracking(update, context)
+
     elif text == t["history"]:
 
+        # L'historique détaillé des demandes sera affiché dans le suivi du dossier.
+        await loan_tracking(update, context)
 
-        await update.message.reply_text(
-            _bt(update, "no_requests")
-        )
 
     # =====================================================
     # CONDITIONS & À-PROPOS
@@ -4015,6 +4191,18 @@ def main():
         MessageHandler(
             filters.PHOTO,
             kyc_photo_handler
+        )
+    )
+
+    # =========================
+    # SUIVI DU DOSSIER
+    # =========================
+    application.add_handler(
+        MessageHandler(
+            filters.Regex(
+                r"^(📊 Suivi du dossier|📊 Application tracking|📊 Seguimiento de la solicitud|📊 Acompanhamento do pedido)$"
+            ),
+            loan_tracking,
         )
     )
 

@@ -12,6 +12,7 @@ from telegram.ext import ContextTypes
 from notifications import send_admin_notification
 from notifications import send_notification_once
 from i18n import tr
+from database import record_loan_stage
 
 
 ADMIN_ID = 8266012108
@@ -412,6 +413,8 @@ async def show_loan(query, request_id):
             l.guarantee_status,
             l.txid,
             l.wallet_address,
+            l.current_stage,
+            l.stage_updated_at,
             l.created_at,
             u.first_name,
             u.last_name,
@@ -457,6 +460,8 @@ async def show_loan(query, request_id):
         guarantee_status,
         txid,
         wallet,
+        current_stage,
+        stage_updated_at,
         created_at,
         first_name,
         last_name,
@@ -505,6 +510,21 @@ async def show_loan(query, request_id):
                 )
             ])
 
+        if str(loan_status or "").lower() in ("approved", "active"):
+            buttons.append([
+                InlineKeyboardButton(
+                    "✅ Remboursement terminé",
+                    callback_data=f"admin_loan_complete:{loan_id}"
+                )
+            ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            "📊 Suivi & historique",
+            callback_data=f"admin_loan_tracking:{rid}"
+        )
+    ])
+
     buttons.append([
         InlineKeyboardButton(
             "👤 Profil",
@@ -536,6 +556,8 @@ async def show_loan(query, request_id):
         f"💳 Statut garantie : {guarantee_status or '-'}\n"
         f"🧾 TXID déclaré : {txid or 'Non renseigné'}\n"
         f"📌 Statut demande : {status or '-'}\n"
+        f"📊 Étape du dossier : {current_stage or 'received'}\n"
+        f"🕐 Dernière mise à jour : {stage_updated_at or created_at or '-'}\n"
         f"📅 Créée : {created_at or '-'}\n"
     )
 
@@ -675,6 +697,127 @@ async def show_notification_options(query, telegram_id):
         ),
         reply_markup=keyboard
     )
+
+async def show_loan_tracking_admin(query, request_id):
+    """Affiche l'historique et les actions d'étape du dossier côté admin."""
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT telegram_id, amount, current_stage, stage_updated_at
+        FROM loan_requests
+        WHERE id = ?
+        """,
+        (request_id,),
+    )
+    request = cur.fetchone()
+
+    if not request:
+        conn.close()
+        await query.edit_message_text(
+            "❌ Demande introuvable.",
+            reply_markup=InlineKeyboardMarkup([[back_button()]]),
+        )
+        return
+
+    telegram_id, amount, current_stage, stage_updated_at = request
+    cur.execute(
+        """
+        SELECT stage, note, changed_by, created_at
+        FROM loan_stage_history
+        WHERE loan_request_id = ?
+        ORDER BY id DESC
+        LIMIT 20
+        """,
+        (request_id,),
+    )
+    history = cur.fetchall()
+
+    cur.execute(
+        """
+        SELECT id, status
+        FROM loans
+        WHERE loan_request_id = ?
+        LIMIT 1
+        """,
+        (request_id,),
+    )
+    loan = cur.fetchone()
+    conn.close()
+
+    labels = {
+        "received": "📥 Reçue",
+        "verification": "🔍 En vérification",
+        "kyc_pending": "🪪 KYC en cours",
+        "kyc_approved": "🟢 KYC validé",
+        "kyc_rejected": "❌ KYC rejeté",
+        "analysis": "📋 En analyse",
+        "approved": "✅ Approuvée",
+        "disbursement": "💸 Décaissement en cours",
+        "disbursed": "💰 Décaissement effectué",
+        "rejected": "❌ Rejetée",
+        "completed": "🏁 Remboursement terminé",
+    }
+
+    text = (
+        f"📊 SUIVI DU DOSSIER #{request_id}\n\n"
+        f"👤 Telegram : {telegram_id}\n"
+        f"💰 Montant : {float(amount):g} USDT\n"
+        f"📌 Étape actuelle : {labels.get(current_stage or 'received', current_stage or 'received')}\n"
+        f"🕐 Mise à jour : {stage_updated_at or '-'}\n"
+    )
+
+    if history:
+        text += "\n🕘 HISTORIQUE\n"
+        for stage, note, changed_by, created_at in reversed(history):
+            text += (
+                f"{created_at or '-'} — "
+                f"{labels.get(stage, stage)}"
+                f"{' — ' + note if note else ''}\n"
+            )
+    else:
+        text += "\n🕘 HISTORIQUE\nAucun événement enregistré."
+
+    buttons = [
+        [
+            InlineKeyboardButton("📥 Reçue", callback_data=f"admin_loan_stage:{request_id}:received"),
+            InlineKeyboardButton("🔍 Vérification", callback_data=f"admin_loan_stage:{request_id}:verification"),
+        ],
+        [
+            InlineKeyboardButton("🪪 KYC en cours", callback_data=f"admin_loan_stage:{request_id}:kyc_pending"),
+            InlineKeyboardButton("📋 Analyse", callback_data=f"admin_loan_stage:{request_id}:analysis"),
+        ],
+    ]
+
+    if loan:
+        loan_id, loan_status = loan
+        if str(loan_status).lower() in ("approved", "active"):
+            buttons.append([
+                InlineKeyboardButton(
+                    "💸 Décaissement en cours",
+                    callback_data=f"admin_loan_stage:{request_id}:disbursement",
+                )
+            ])
+            buttons.append([
+                InlineKeyboardButton(
+                    "💰 Décaissement effectué",
+                    callback_data=f"admin_loan_stage:{request_id}:disbursed",
+                ),
+                InlineKeyboardButton(
+                    "🏁 Remboursement terminé",
+                    callback_data=f"admin_loan_complete:{loan_id}",
+                ),
+            ])
+
+    buttons.append([
+        InlineKeyboardButton("↩️ Dossier", callback_data=f"admin_loan:{request_id}")
+    ])
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
+
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1128,6 +1271,13 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             )
 
+            record_loan_stage(
+                conn,
+                request_id,
+                "disbursed",
+                changed_by=ADMIN_ID,
+                note="Décaissement enregistré par l'administrateur",
+            )
             conn.commit()
             conn.close()
 
@@ -1193,6 +1343,172 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await show_loans(query)
 
+            return
+
+        if data.startswith("admin_loan_tracking:"):
+            request_id = int(data.split(":", 1)[1])
+            await show_loan_tracking_admin(query, request_id)
+            return
+
+        if data.startswith("admin_loan_stage:"):
+            parts = data.split(":")
+            if len(parts) != 3:
+                await query.answer("❌ Étape invalide.", show_alert=True)
+                return
+
+            request_id = int(parts[1])
+            stage = parts[2]
+            allowed_stages = {
+                "received",
+                "verification",
+                "kyc_pending",
+                "kyc_approved",
+                "kyc_rejected",
+                "analysis",
+                "approved",
+                "disbursement",
+                "disbursed",
+                "rejected",
+            }
+            if stage not in allowed_stages:
+                await query.answer("❌ Étape invalide.", show_alert=True)
+                return
+
+            conn = db()
+            try:
+                telegram_id = record_loan_stage(
+                    conn,
+                    request_id,
+                    stage,
+                    changed_by=ADMIN_ID,
+                    note="Mise à jour manuelle par l'administrateur",
+                )
+                if not telegram_id:
+                    conn.rollback()
+                    await query.answer("❌ Demande introuvable.", show_alert=True)
+                    conn.close()
+                    return
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                conn.close()
+                raise
+            conn.close()
+
+            stage_labels = {
+                "received": "📥 Demande reçue",
+                "verification": "🔍 Vérification du profil",
+                "kyc_pending": "🪪 KYC en cours",
+                "kyc_approved": "🟢 KYC validé",
+                "kyc_rejected": "❌ KYC rejeté",
+                "analysis": "📋 Analyse du dossier",
+                "approved": "✅ Demande approuvée",
+                "disbursement": "💸 Décaissement en cours",
+                "disbursed": "💰 Décaissement effectué",
+                "rejected": "❌ Demande rejetée",
+            }
+            try:
+                await send_notification_once(
+                    bot=context.bot,
+                    telegram_id=telegram_id,
+                    notification_type="loan_stage",
+                    reference_id=f"{request_id}:{stage}",
+                    text=tr(
+                        telegram_id,
+                        "loan_stage_update",
+                        request_id=request_id,
+                        stage_label=stage_labels[stage],
+                    ),
+                )
+            except Exception as e:
+                print(f"⚠️ Notification étape impossible : {e}")
+
+            await show_loan_tracking_admin(query, request_id)
+            return
+
+        if data.startswith("admin_loan_complete:"):
+            loan_id = int(data.split(":", 1)[1])
+            conn = db()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT loan_request_id, telegram_id, status, total_repayment
+                    FROM loans
+                    WHERE id = ?
+                    """,
+                    (loan_id,),
+                )
+                loan = cur.fetchone()
+                if not loan:
+                    conn.close()
+                    await query.answer("❌ Prêt introuvable.", show_alert=True)
+                    return
+
+                request_id, telegram_id, loan_status, total_repayment = loan
+                if str(loan_status).lower() == "completed":
+                    conn.close()
+                    await query.answer("ℹ️ Ce prêt est déjà terminé.", show_alert=True)
+                    await show_loan(query, request_id)
+                    return
+
+                if str(loan_status).lower() not in ("approved", "active"):
+                    conn.close()
+                    await query.answer(
+                        "⚠️ Ce prêt ne peut pas être clôturé dans son état actuel.",
+                        show_alert=True,
+                    )
+                    return
+
+                cur.execute(
+                    """
+                    UPDATE loans
+                    SET status = 'completed',
+                        amount_repaid = ?,
+                        installments_paid = duration_months,
+                        last_payment_at = CURRENT_TIMESTAMP,
+                        completed_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND status IN ('approved', 'active')
+                    """,
+                    (total_repayment, loan_id),
+                )
+                if cur.rowcount != 1:
+                    conn.rollback()
+                    conn.close()
+                    await query.answer("⚠️ Le prêt a déjà été traité.", show_alert=True)
+                    return
+
+                record_loan_stage(
+                    conn,
+                    request_id,
+                    "completed",
+                    changed_by=ADMIN_ID,
+                    note="Remboursement déclaré terminé par l'administrateur",
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                conn.close()
+                raise
+            conn.close()
+
+            try:
+                await send_notification_once(
+                    bot=context.bot,
+                    telegram_id=telegram_id,
+                    notification_type="loan_completed",
+                    reference_id=str(loan_id),
+                    text=tr(
+                        telegram_id,
+                        "loan_stage_update",
+                        request_id=request_id,
+                        stage_label="🏁 Remboursement terminé",
+                    ),
+                )
+            except Exception as e:
+                print(f"⚠️ Notification clôture impossible : {e}")
+
+            await show_loan(query, request_id)
             return
 
         if data.startswith("admin_loan_approve:"):
@@ -1394,6 +1710,14 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     (request_id,)
                 )
 
+                record_loan_stage(
+                    conn,
+                    request_id,
+                    "approved",
+                    changed_by=ADMIN_ID,
+                    note="Demande approuvée par l'administrateur",
+                )
+
                 conn.commit()
 
                 log_admin_action(
@@ -1474,6 +1798,13 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.answer("⚠️ Cette demande a déjà été traitée.", show_alert=True)
                 return
 
+            record_loan_stage(
+                conn,
+                request_id,
+                "rejected",
+                changed_by=ADMIN_ID,
+                note="Demande rejetée par l'administrateur",
+            )
             conn.commit()
             conn.close()
 
@@ -1601,6 +1932,35 @@ async def admin_disbursement_start(query, context, loan_id):
             show_alert=True
         )
         return
+
+    conn = db()
+    try:
+        record_loan_stage(
+            conn,
+            request_id,
+            "disbursement",
+            changed_by=ADMIN_ID,
+            note="Décaissement en cours d'enregistrement",
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        await send_notification_once(
+            bot=context.bot,
+            telegram_id=telegram_id,
+            notification_type="loan_stage",
+            reference_id=f"{request_id}:disbursement",
+            text=tr(
+                telegram_id,
+                "loan_stage_update",
+                request_id=request_id,
+                stage_label="💸 Décaissement en cours",
+            ),
+        )
+    except Exception as e:
+        print(f"⚠️ Notification étape décaissement impossible : {e}")
 
     context.user_data["admin_disbursement"] = {
         "loan_id": loan_id,

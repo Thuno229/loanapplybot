@@ -1,6 +1,7 @@
 from storage import DB_PATH
 import sqlite3
 from i18n import tr
+from database import record_loan_stage
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
@@ -46,6 +47,29 @@ async def kyc_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         user = cur.fetchone()
+
+        # Si une demande existe déjà, le KYC devient une étape du dossier.
+        cur.execute(
+            """
+            SELECT id
+            FROM loan_requests
+            WHERE telegram_id = ?
+              AND status NOT IN ('rejected', 'cancelled')
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (user_id,),
+        )
+        existing_request = cur.fetchone()
+        if existing_request:
+            record_loan_stage(
+                conn,
+                existing_request[0],
+                "kyc_pending",
+                changed_by=user_id,
+                note="KYC soumis",
+            )
+
         conn.commit()
 
     finally:
@@ -140,6 +164,27 @@ async def kyc_decision_callback(
         """,
         (status, user_id)
     )
+
+    cur.execute(
+        """
+        SELECT id
+        FROM loan_requests
+        WHERE telegram_id = ?
+          AND status NOT IN ('rejected', 'cancelled')
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (user_id,),
+    )
+    existing_request = cur.fetchone()
+    if existing_request:
+        record_loan_stage(
+            conn,
+            existing_request[0],
+            "kyc_approved" if status == "approved" else "kyc_rejected",
+            changed_by=ADMIN_ID,
+            note="KYC validé" if status == "approved" else "KYC rejeté",
+        )
 
     conn.commit()
     conn.close()
