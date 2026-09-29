@@ -2186,22 +2186,70 @@ async def my_loan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         disbursement_label = disbursement_labels.get(
             lang, disbursement_labels["fr"]
         )
+    texts = {
+        "fr": (
+            "💳 MON PRÊT EN COURS\n\n"
+            f"🆔 Demande : #{request_id}\n"
+            f"💰 Montant du prêt : {amount:g} USDT\n"
+            f"📈 Taux : {interest_rate:g} % / mois\n"
+            f"💳 Total à rembourser : {total_repayment:.2f} USDT\n"
+            f"🧮 Mensualité : {monthly_payment:.2f} USDT\n"
+            f"📅 Durée : {duration_months} mois\n\n"
+            f"💵 Déjà remboursé : {amount_repaid:.2f} USDT\n"
+            f"💰 Reste à rembourser : {remaining:.2f} USDT\n"
+            f"🔢 Échéances payées : {installments_paid}/{duration_months}\n"
+            f"📅 Prochaine échéance : {next_due_date or 'Non définie'}\n\n"
+            f"📌 Statut du prêt : {loan_status}\n"
+            f"📤 Décaissement : {disbursement_label}\n"
+        ),
+        "en": (
+            "💳 MY ACTIVE LOAN\n\n"
+            f"🆔 Loan request: #{request_id}\n"
+            f"💰 Loan amount: {amount:g} USDT\n"
+            f"📈 Rate: {interest_rate:g}% / month\n"
+            f"💳 Total to repay: {total_repayment:.2f} USDT\n"
+            f"🧮 Monthly installment: {monthly_payment:.2f} USDT\n"
+            f"📅 Duration: {duration_months} months\n\n"
+            f"💵 Already repaid: {amount_repaid:.2f} USDT\n"
+            f"💰 Remaining: {remaining:.2f} USDT\n"
+            f"🔢 Installments paid: {installments_paid}/{duration_months}\n"
+            f"📅 Next installment: {next_due_date or 'Not defined'}\n\n"
+            f"📌 Loan status: {loan_status}\n"
+            f"📤 Disbursement: {disbursement_label}\n"
+        ),
+        "es": (
+            "💳 MI PRÉSTAMO ACTIVO\n\n"
+            f"🆔 Solicitud: #{request_id}\n"
+            f"💰 Importe del préstamo: {amount:g} USDT\n"
+            f"📈 Tasa: {interest_rate:g}% / mes\n"
+            f"💳 Total a reembolsar: {total_repayment:.2f} USDT\n"
+            f"🧮 Pago mensual: {monthly_payment:.2f} USDT\n"
+            f"📅 Duración: {duration_months} meses\n\n"
+            f"💵 Ya reembolsado: {amount_repaid:.2f} USDT\n"
+            f"💰 Restante por reembolsar: {remaining:.2f} USDT\n"
+            f"🔢 Cuotas pagadas: {installments_paid}/{duration_months}\n"
+            f"📅 Próxima cuota: {next_due_date or 'No definida'}\n\n"
+            f"📌 Estado del préstamo: {loan_status}\n"
+            f"📤 Desembolso: {disbursement_label}\n"
+        ),
+        "pt": (
+            "💳 MEU EMPRÉSTIMO ATIVO\n\n"
+            f"🆔 Solicitação: #{request_id}\n"
+            f"💰 Valor do empréstimo: {amount:g} USDT\n"
+            f"📈 Taxa: {interest_rate:g}% / mês\n"
+            f"💳 Total a reembolsar: {total_repayment:.2f} USDT\n"
+            f"🧮 Pagamento mensal: {monthly_payment:.2f} USDT\n"
+            f"📅 Duração: {duration_months} meses\n\n"
+            f"💵 Já reembolsado: {amount_repaid:.2f} USDT\n"
+            f"💰 Restante a reembolsar: {remaining:.2f} USDT\n"
+            f"🔢 Parcelas pagas: {installments_paid}/{duration_months}\n"
+            f"📅 Próxima parcela: {next_due_date or 'Não definida'}\n\n"
+            f"📌 Status do empréstimo: {loan_status}\n"
+            f"📤 Desembolso: {disbursement_label}\n"
+        )
+    }
 
-    text = (
-        "💳 MON PRÊT EN COURS\n\n"
-        f"🆔 Demande : #{request_id}\n"
-        f"💰 Montant du prêt : {amount:g} USDT\n"
-        f"📈 Taux : {interest_rate:g} % / mois\n"
-        f"💳 Total à rembourser : {total_repayment:.2f} USDT\n"
-        f"🧮 Mensualité : {monthly_payment:.2f} USDT\n"
-        f"📅 Durée : {duration_months} mois\n\n"
-        f"💵 Déjà remboursé : {amount_repaid:.2f} USDT\n"
-        f"💰 Reste à rembourser : {remaining:.2f} USDT\n"
-        f"🔢 Échéances payées : {installments_paid}/{duration_months}\n"
-        f"📆 Prochaine échéance : {next_due_date or 'Non définie'}\n\n"
-        f"📌 Statut du prêt : {loan_status}\n"
-        f"📤 Décaissement : {disbursement_label}\n"
-    )
+    text = texts.get(lang, texts["fr"])
 
     extra_texts = {
         "fr": {
