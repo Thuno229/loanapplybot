@@ -2779,6 +2779,10 @@ async def loan_current_callback(update: Update, context: ContextTypes.DEFAULT_TY
 # =========================
 
 async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Le tableau de bord ne traite jamais les messages de groupes.
+    if update.effective_chat and update.effective_chat.type != "private":
+        return
+
     if context.user_data.get("awaiting_network"):
         await update.message.reply_text(
             _bt(update, "network_select")
@@ -4080,6 +4084,84 @@ async def registration_photo_or_kyc(update, context):
     return await photo(update, context)
 
 
+# =========================
+# MODE GROUPE — SILENCIEUX PAR DÉFAUT
+# =========================
+
+async def group_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Accueille chaque nouveau membre avec une mention cliquable.
+    Les bots ne reçoivent pas de message de bienvenue.
+    """
+    message = update.effective_message
+    if not message or not message.new_chat_members:
+        return
+
+    for member in message.new_chat_members:
+        if getattr(member, "is_bot", False):
+            continue
+
+        # mention_html() mentionne la personne même sans @username.
+        name = member.mention_html()
+        await message.reply_text(
+            f"👋 Bienvenue {name} !\n\n"
+            f"🌍 Bienvenue dans Global USDT Finance Community.\n"
+            f"🤖 Pour utiliser LoanApply24Bot, ouvrez le bot en privé : @LoanApply24Bot",
+            parse_mode="HTML",
+        )
+
+
+async def group_assistant_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Répond uniquement si le bot est explicitement sollicité dans le groupe.
+
+    Un message ordinaire est ignoré. Une mention du bot ou une réponse
+    directe à un message du bot déclenche une courte réponse d'orientation.
+    """
+    message = update.effective_message
+    if not message or not message.text:
+        return
+
+    text = message.text or ""
+    bot_username = getattr(context.bot, "username", None)
+
+    mentioned = bool(
+        bot_username
+        and f"@{bot_username}".lower() in text.lower()
+    )
+
+    replied_to_bot = bool(
+        message.reply_to_message
+        and message.reply_to_message.from_user
+        and message.reply_to_message.from_user.id == context.bot.id
+    )
+
+    if not (mentioned or replied_to_bot):
+        return
+
+    user = update.effective_user
+    name = user.mention_html() if user else "Bonjour"
+
+    await message.reply_text(
+        f"👋 Bonjour {name} !\n\n"
+        f"🤖 Je suis LoanApply24Bot.\n"
+        f"Pour effectuer une demande ou utiliser les fonctions du bot, "
+        f"ouvrez-moi en privé : @LoanApply24Bot",
+        parse_mode="HTML",
+    )
+
+
+async def group_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Aide minimale lorsqu'un membre appelle /help dans le groupe."""
+    message = update.effective_message
+    if not message:
+        return
+
+    await message.reply_text(
+        "🤖 LoanApply24Bot\n\n"
+        "Pour utiliser l'assistant, ouvrez @LoanApply24Bot en privé.\n"
+        "Les messages ordinaires du groupe ne déclenchent pas de réponse automatique."
+    )
+
+
 def main():
 
     init_database()
@@ -4092,7 +4174,7 @@ def main():
 
     registration = ConversationHandler(
         entry_points=[
-            CommandHandler("start", start),
+            CommandHandler("start", start, filters=filters.ChatType.PRIVATE),
             CallbackQueryHandler(
                 registration_resume_entry,
                 pattern=r"^registration_resume$"
@@ -4219,7 +4301,7 @@ def main():
         },
 
         fallbacks=[
-            CommandHandler("cancel", cancel)
+            CommandHandler("cancel", cancel, filters=filters.ChatType.PRIVATE)
         ],
     )
 
@@ -4237,7 +4319,7 @@ def main():
 
     application.add_handler(
         MessageHandler(
-            filters.PHOTO,
+            filters.ChatType.PRIVATE & filters.PHOTO,
             kyc_photo_handler
         )
     )
@@ -4247,7 +4329,8 @@ def main():
     # =========================
     application.add_handler(
         MessageHandler(
-            filters.Regex(
+            filters.ChatType.PRIVATE
+            & filters.Regex(
                 r"^(📊 Suivi du dossier|📊 Application tracking|📊 Seguimiento de la solicitud|📊 Acompanhamento do pedido)$"
             ),
             loan_tracking,
@@ -4260,7 +4343,8 @@ def main():
 
     application.add_handler(
         MessageHandler(
-            filters.Regex(r"^(💳 Mon prêt en cours|💳 My active loan|💳 Mi préstamo activo|💳 Meu empréstimo ativo)$"),
+            filters.ChatType.PRIVATE
+            & filters.Regex(r"^(💳 Mon prêt en cours|💳 My active loan|💳 Mi préstamo activo|💳 Meu empréstimo ativo)$"),
             my_loan
         )
     )
@@ -4281,7 +4365,8 @@ def main():
 
     application.add_handler(
         MessageHandler(
-            filters.User(user_id=ADMIN_ID)
+            filters.ChatType.PRIVATE
+            & filters.User(user_id=ADMIN_ID)
             & filters.TEXT
             & ~filters.COMMAND,
             admin_disbursement_router
@@ -4290,14 +4375,40 @@ def main():
 
     application.add_handler(
         MessageHandler(
-            filters.Regex(r"^(🇫🇷 Français|🇬🇧 English|🇪🇸 Español|🇵🇹 Português)$"),
+            filters.ChatType.PRIVATE
+            & filters.Regex(r"^(🇫🇷 Français|🇬🇧 English|🇪🇸 Español|🇵🇹 Português)$"),
             change_existing_language,
+        )
+    )
+
+    # =========================
+    # GROUPE — BIENVENUE + ASSISTANCE EXPLICITE
+    # =========================
+    application.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS & filters.StatusUpdate.NEW_CHAT_MEMBERS,
+            group_welcome,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "help",
+            group_help,
+            filters=filters.ChatType.GROUPS,
         )
     )
 
     application.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
+            group_assistant_trigger,
+        )
+    )
+
+    application.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
             dashboard
         )
     )
