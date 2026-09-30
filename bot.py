@@ -13,6 +13,8 @@ from admin_panel import (
     ADMIN_ID,
 )
 import os
+import re
+from datetime import datetime
 
 BOT_DATA_DIR = os.getenv("BOT_DATA_DIR", ".")
 DB_PATH = os.path.join(BOT_DATA_DIR, "loan_bot.db")
@@ -28,6 +30,7 @@ from telegram import (
     KeyboardButton,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    ChatPermissions,
 )
 from telegram.ext import (
     Application,
@@ -2779,10 +2782,6 @@ async def loan_current_callback(update: Update, context: ContextTypes.DEFAULT_TY
 # =========================
 
 async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Le tableau de bord ne traite jamais les messages de groupes.
-    if update.effective_chat and update.effective_chat.type != "private":
-        return
-
     if context.user_data.get("awaiting_network"):
         await update.message.reply_text(
             _bt(update, "network_select")
@@ -4084,14 +4083,178 @@ async def registration_photo_or_kyc(update, context):
     return await photo(update, context)
 
 
+
 # =========================
-# MODE GROUPE — SILENCIEUX PAR DÉFAUT
+# MODE GROUPE — LANGUES + AIDE + MODÉRATION
 # =========================
 
+def _group_language(user):
+    """Return the user's saved language, then Telegram language, then French."""
+    if not user:
+        return "fr"
+
+    try:
+        saved = i18n_get_client_language(user.id)
+        if saved in LANGUAGES:
+            return saved
+    except Exception:
+        pass
+
+    code = (getattr(user, "language_code", "") or "").lower().split("-")[0].split("_")[0]
+    return code if code in LANGUAGES else "fr"
+
+
+def _group_language_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🇫🇷 Français", callback_data="group_lang_fr"),
+            InlineKeyboardButton("🇬🇧 English", callback_data="group_lang_en"),
+        ],
+        [
+            InlineKeyboardButton("🇪🇸 Español", callback_data="group_lang_es"),
+            InlineKeyboardButton("🇵🇹 Português", callback_data="group_lang_pt"),
+        ],
+    ])
+
+
+GROUP_TERMS = {
+    "fr": (
+        "📘 <b>À PROPOS & CONDITIONS</b>\n\n"
+        "🌍 Loan Request Assistant permet de soumettre et de suivre une demande de prêt en USDT.\n\n"
+        "💰 <b>CONDITIONS PRINCIPALES</b>\n"
+        "• Montant : 500 à 50 000 USDT\n"
+        "• Durée : 6 à 44 mois\n"
+        "• Intérêt indiqué : 1 % par mois\n"
+        "• Garantie indicative : 15 % du montant demandé\n\n"
+        "🛡️ <b>GARANTIE</b>\n"
+        "La garantie est un mécanisme de sécurité destiné notamment à limiter le risque de non-remboursement. Elle est prévue pour être restituée après le remboursement complet du prêt, conformément aux conditions du dossier.\n\n"
+        "🔐 <b>KYC</b>\n"
+        "La vérification KYC est obligatoire avant toute demande de prêt. Les informations et documents fournis doivent être exacts et lisibles.\n\n"
+        "⚠️ <b>IMPORTANT</b>\n"
+        "La soumission d'une demande ne garantit pas l'acceptation du prêt. Chaque dossier est soumis aux vérifications et conditions du programme.\n\n"
+        "En cliquant sur « ✅ Je suis d’accord », vous confirmez avoir lu et compris ces informations."
+    ),
+    "en": (
+        "📘 <b>ABOUT & TERMS</b>\n\n"
+        "🌍 Loan Request Assistant allows you to submit and track a USDT loan request.\n\n"
+        "💰 <b>MAIN CONDITIONS</b>\n"
+        "• Amount: 500 to 50,000 USDT\n"
+        "• Duration: 6 to 44 months\n"
+        "• Stated interest: 1% per month\n"
+        "• Indicative guarantee: 15% of the requested amount\n\n"
+        "🛡️ <b>GUARANTEE</b>\n"
+        "The guarantee is a security mechanism intended, among other things, to limit the risk of non-repayment. It is intended to be returned after the loan is fully repaid, according to the terms of the loan file.\n\n"
+        "🔐 <b>KYC</b>\n"
+        "KYC verification is mandatory before submitting a loan request. The information and documents provided must be accurate and readable.\n\n"
+        "⚠️ <b>IMPORTANT</b>\n"
+        "Submitting a request does not guarantee loan approval. Each application is subject to the program's verification and conditions.\n\n"
+        "By clicking « ✅ I agree », you confirm that you have read and understood this information."
+    ),
+    "es": (
+        "📘 <b>INFORMACIÓN Y CONDICIONES</b>\n\n"
+        "🌍 Loan Request Assistant permite enviar y seguir una solicitud de préstamo en USDT.\n\n"
+        "💰 <b>CONDICIONES PRINCIPALES</b>\n"
+        "• Importe: 500 a 50.000 USDT\n"
+        "• Duración: 6 a 44 meses\n"
+        "• Interés indicado: 1 % mensual\n"
+        "• Garantía indicativa: 15 % del importe solicitado\n\n"
+        "🛡️ <b>GARANTÍA</b>\n"
+        "La garantía es un mecanismo de seguridad destinado, entre otras cosas, a limitar el riesgo de impago. Está prevista su devolución después del reembolso completo del préstamo, según las condiciones del expediente.\n\n"
+        "🔐 <b>KYC</b>\n"
+        "La verificación KYC es obligatoria antes de solicitar un préstamo. La información y los documentos deben ser exactos y legibles.\n\n"
+        "⚠️ <b>IMPORTANTE</b>\n"
+        "Enviar una solicitud no garantiza la aprobación del préstamo. Cada expediente está sujeto a las verificaciones y condiciones del programa.\n\n"
+        "Al pulsar « ✅ Estoy de acuerdo », confirma que ha leído y comprendido esta información."
+    ),
+    "pt": (
+        "📘 <b>SOBRE E CONDIÇÕES</b>\n\n"
+        "🌍 O Loan Request Assistant permite enviar e acompanhar um pedido de empréstimo em USDT.\n\n"
+        "💰 <b>CONDIÇÕES PRINCIPAIS</b>\n"
+        "• Valor: 500 a 50.000 USDT\n"
+        "• Prazo: 6 a 44 meses\n"
+        "• Juros indicados: 1% por mês\n"
+        "• Garantia indicativa: 15% do valor solicitado\n\n"
+        "🛡️ <b>GARANTIA</b>\n"
+        "A garantia é um mecanismo de segurança destinado, entre outras coisas, a limitar o risco de não pagamento. Está prevista a sua devolução após o reembolso total do empréstimo, de acordo com as condições do processo.\n\n"
+        "🔐 <b>KYC</b>\n"
+        "A verificação KYC é obrigatória antes de solicitar um empréstimo. As informações e documentos fornecidos devem ser corretos e legíveis.\n\n"
+        "⚠️ <b>IMPORTANTE</b>\n"
+        "O envio de um pedido não garante a aprovação do empréstimo. Cada pedido está sujeito às verificações e condições do programa.\n\n"
+        "Ao clicar em « ✅ Concordo », confirma que leu e compreendeu estas informações."
+    ),
+}
+
+
+def _group_terms_keyboard(lang, bot_username=None):
+    labels = {
+        "fr": "✅ Je suis d’accord",
+        "en": "✅ I agree",
+        "es": "✅ Estoy de acuerdo",
+        "pt": "✅ Concordo",
+    }
+    open_labels = {
+        "fr": "🤖 Ouvrir le bot",
+        "en": "🤖 Open the bot",
+        "es": "🤖 Abrir el bot",
+        "pt": "🤖 Abrir o bot",
+    }
+    rows = [[InlineKeyboardButton(labels[lang], callback_data="group_terms_accept")]]
+    if bot_username:
+        rows.append([InlineKeyboardButton(open_labels[lang], url=f"https://t.me/{bot_username}")])
+    return InlineKeyboardMarkup(rows)
+
+
+GROUP_TEXT = {
+    "fr": {
+        "welcome": "👋 Bienvenue {name} !\n\n🌍 Bienvenue dans Global USDT Finance Community.\n🤖 Pour utiliser LoanApply24Bot, ouvrez le bot en privé : @LoanApply24Bot.\nℹ️ Aide : /help",
+        "hello": "👋 Bonjour {name} !\n\n🤖 Je suis LoanApply24Bot.\nPour effectuer une demande ou utiliser les fonctions du bot, ouvrez-moi en privé : @LoanApply24Bot",
+        "help": "🤖 <b>LoanApply24Bot — Aide</b>\n\n📌 <b>Commandes :</b>\n• /help — afficher cette aide\n• @LoanApply24Bot — demander l’assistance\n• Répondre à un message du bot — obtenir une réponse\n\n💰 Pour utiliser toutes les fonctions, ouvrez @LoanApply24Bot en privé.\n🔕 Les messages ordinaires du groupe restent silencieux.",
+        "link_deleted": "⚠️ {name}, les liens et invitations externes ne sont pas autorisés dans ce groupe. Votre message a été supprimé.",
+        "spam_deleted": "⚠️ {name}, ce message a été supprimé car il ressemble à du spam ou à une publicité non autorisée.",
+        "restricted": "🔇 {name}, plusieurs infractions ont été détectées. Vous êtes temporairement restreint pendant 30 minutes.",
+    },
+    "en": {
+        "welcome": "👋 Welcome {name}!\n\n🌍 Welcome to Global USDT Finance Community.\n🤖 To use LoanApply24Bot, open the bot privately: @LoanApply24Bot.\nℹ️ Help: /help",
+        "hello": "👋 Hello {name}!\n\n🤖 I am LoanApply24Bot.\nTo submit a request or use the bot's functions, open me privately: @LoanApply24Bot",
+        "help": "🤖 <b>LoanApply24Bot — Help</b>\n\n📌 <b>Commands:</b>\n• /help — show this help\n• @LoanApply24Bot — ask for assistance\n• Reply to a bot message — get a response\n\n💰 To use all features, open @LoanApply24Bot privately.\n🔕 Ordinary group messages remain silent.",
+        "link_deleted": "⚠️ {name}, external links and invitations are not allowed in this group. Your message was deleted.",
+        "spam_deleted": "⚠️ {name}, this message was deleted because it looks like spam or unauthorized advertising.",
+        "restricted": "🔇 {name}, several violations were detected. You are temporarily restricted for 30 minutes.",
+    },
+    "es": {
+        "welcome": "👋 ¡Bienvenido {name}!\n\n🌍 Bienvenido a Global USDT Finance Community.\n🤖 Para usar LoanApply24Bot, abre el bot en privado: @LoanApply24Bot.\nℹ️ Ayuda: /help",
+        "hello": "👋 ¡Hola {name}!\n\n🤖 Soy LoanApply24Bot.\nPara enviar una solicitud o usar las funciones del bot, ábreme en privado: @LoanApply24Bot",
+        "help": "🤖 <b>LoanApply24Bot — Ayuda</b>\n\n📌 <b>Comandos:</b>\n• /help — mostrar esta ayuda\n• @LoanApply24Bot — pedir asistencia\n• Responder a un mensaje del bot — obtener una respuesta\n\n💰 Para usar todas las funciones, abre @LoanApply24Bot en privado.\n🔕 Los mensajes normales del grupo permanecen en silencio.",
+        "link_deleted": "⚠️ {name}, los enlaces y las invitaciones externas no están permitidos en este grupo. Tu mensaje fue eliminado.",
+        "spam_deleted": "⚠️ {name}, este mensaje fue eliminado porque parece spam o publicidad no autorizada.",
+        "restricted": "🔇 {name}, se detectaron varias infracciones. Has sido restringido temporalmente durante 30 minutos.",
+    },
+    "pt": {
+        "welcome": "👋 Bem-vindo {name}!\n\n🌍 Bem-vindo à Global USDT Finance Community.\n🤖 Para usar o LoanApply24Bot, abra o bot em privado: @LoanApply24Bot.\nℹ️ Ajuda: /help",
+        "hello": "👋 Olá {name}!\n\n🤖 Sou o LoanApply24Bot.\nPara enviar um pedido ou usar as funções do bot, abra-me em privado: @LoanApply24Bot",
+        "help": "🤖 <b>LoanApply24Bot — Ajuda</b>\n\n📌 <b>Comandos:</b>\n• /help — mostrar esta ajuda\n• @LoanApply24Bot — pedir assistência\n• Responder a uma mensagem do bot — obter uma resposta\n\n💰 Para usar todos os recursos, abra @LoanApply24Bot em privado.\n🔕 Mensagens normais do grupo permanecem silenciosas.",
+        "link_deleted": "⚠️ {name}, links e convites externos não são permitidos neste grupo. A sua mensagem foi eliminada.",
+        "spam_deleted": "⚠️ {name}, esta mensagem foi eliminada porque parece spam ou publicidade não autorizada.",
+        "restricted": "🔇 {name}, foram detetadas várias infrações. Você foi temporariamente restringido por 30 minutos.",
+    },
+}
+
+
+# Liens externes / invitations. La mention officielle du bot n'est pas bloquée.
+_GROUP_LINK_RE = re.compile(
+    r"(?:https?://|www\.|t\.me/|telegram\.me/|telegram\.dog/|joinchat/|wa\.me/)",
+    re.IGNORECASE,
+)
+
+# Signaux simples de publicité/spam répétitif, sans bloquer les conversations normales.
+_GROUP_SPAM_RE = re.compile(
+    r"(?:double\s+(?:your|ton|vos)|guaranteed\s+(?:profit|income)|\bfree\s+crypto\b|\bairdrop\s+claim\b|\binvest\s+now\b|\bpromo(?:tion)?\b)",
+    re.IGNORECASE,
+)
+
+
 async def group_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Accueille chaque nouveau membre avec une mention cliquable.
-    Les bots ne reçoivent pas de message de bienvenue.
-    """
+    """Accueille les nouveaux membres et leur permet de choisir leur langue dans le groupe."""
     message = update.effective_message
     if not message or not message.new_chat_members:
         return
@@ -4099,35 +4262,106 @@ async def group_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in message.new_chat_members:
         if getattr(member, "is_bot", False):
             continue
-
-        # mention_html() mentionne la personne même sans @username.
         name = member.mention_html()
-        await message.reply_text(
+        intro = (
             f"👋 Bienvenue {name} !\n\n"
-            f"🌍 Bienvenue dans Global USDT Finance Community.\n"
-            f"🤖 Pour utiliser LoanApply24Bot, ouvrez le bot en privé : @LoanApply24Bot",
+            "🌍 <b>Global USDT Finance Community</b>\n\n"
+            "🌐 <b>Choisissez votre langue / Choose your language</b>\n"
+            "🇫🇷 Français • 🇬🇧 English • 🇪🇸 Español • 🇵🇹 Português"
+        )
+        await message.reply_text(
+            intro,
             parse_mode="HTML",
+            reply_markup=_group_language_keyboard(),
         )
 
 
-async def group_assistant_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Répond uniquement si le bot est explicitement sollicité dans le groupe.
+async def group_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sélection de langue directement dans le groupe, même avant l'inscription privée."""
+    query = update.callback_query
+    if not query or not query.from_user:
+        return
 
-    Un message ordinaire est ignoré. Une mention du bot ou une réponse
-    directe à un message du bot déclenche une courte réponse d'orientation.
-    """
+    await query.answer()
+    lang = query.data.rsplit("_", 1)[-1]
+    if lang not in LANGUAGES:
+        return
+
+    context.user_data["language"] = lang
+
+    name = query.from_user.mention_html()
+    bot_username = getattr(context.bot, "username", None)
+    welcome_next = {
+        "fr": f"👋 {name}, votre langue est <b>Français</b>.\n\n📘 Voici les principales conditions. Lisez-les avant de continuer.",
+        "en": f"👋 {name}, your language is <b>English</b>.\n\n📘 Here are the main conditions. Please read them before continuing.",
+        "es": f"👋 {name}, su idioma es <b>Español</b>.\n\n📘 Estas son las condiciones principales. Léelas antes de continuar.",
+        "pt": f"👋 {name}, o seu idioma é <b>Português</b>.\n\n📘 Estas são as principais condições. Leia-as antes de continuar.",
+    }
+
+    await query.message.reply_text(
+        welcome_next[lang],
+        parse_mode="HTML",
+    )
+    await query.message.reply_text(
+        GROUP_TERMS[lang],
+        parse_mode="HTML",
+        reply_markup=_group_terms_keyboard(lang, bot_username),
+    )
+
+
+async def group_terms_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Enregistre l'acceptation des conditions dans le groupe et guide vers le bot privé."""
+    query = update.callback_query
+    if not query or not query.from_user:
+        return
+
+    await query.answer()
+    lang = context.user_data.get("language") or _group_language(query.from_user)
+    if lang not in LANGUAGES:
+        lang = "fr"
+    context.user_data["language"] = lang
+    context.user_data["terms_accepted"] = True
+
+    bot_username = getattr(context.bot, "username", None) or "LoanApply24Bot"
+    messages = {
+        "fr": "✅ Conditions enregistrées.\n\n🤖 Pour commencer votre inscription et demander un prêt, ouvrez le bot en privé puis envoyez /start.",
+        "en": "✅ Terms recorded.\n\n🤖 To start your registration and request a loan, open the bot privately and send /start.",
+        "es": "✅ Condiciones registradas.\n\n🤖 Para comenzar su registro y solicitar un préstamo, abra el bot en privado y envíe /start.",
+        "pt": "✅ Condições registadas.\n\n🤖 Para iniciar o seu cadastro e solicitar um empréstimo, abra o bot em privado e envie /start.",
+    }
+    await query.edit_message_reply_markup(reply_markup=None)
+    await query.message.reply_text(
+        messages[lang],
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                {"fr":"🤖 Ouvrir LoanApply24Bot","en":"🤖 Open LoanApply24Bot","es":"🤖 Abrir LoanApply24Bot","pt":"🤖 Abrir LoanApply24Bot"}[lang],
+                url=f"https://t.me/{bot_username}"
+            )
+        ]]),
+    )
+
+
+async def group_conditions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Affiche les conditions dans le groupe dans la langue du demandeur."""
+    user = update.effective_user
+    lang = _group_language(user)
+    bot_username = getattr(context.bot, "username", None)
+    await update.effective_message.reply_text(
+        GROUP_TERMS[lang],
+        parse_mode="HTML",
+        reply_markup=_group_terms_keyboard(lang, bot_username),
+    )
+
+
+async def group_assistant_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Répond seulement à une mention ou à une réponse au bot."""
     message = update.effective_message
     if not message or not message.text:
         return
 
     text = message.text or ""
     bot_username = getattr(context.bot, "username", None)
-
-    mentioned = bool(
-        bot_username
-        and f"@{bot_username}".lower() in text.lower()
-    )
-
+    mentioned = bool(bot_username and f"@{bot_username}".lower() in text.lower())
     replied_to_bot = bool(
         message.reply_to_message
         and message.reply_to_message.from_user
@@ -4138,29 +4372,134 @@ async def group_assistant_trigger(update: Update, context: ContextTypes.DEFAULT_
         return
 
     user = update.effective_user
-    name = user.mention_html() if user else "Bonjour"
-
+    lang = _group_language(user)
+    name = user.mention_html() if user else ""
     await message.reply_text(
-        f"👋 Bonjour {name} !\n\n"
-        f"🤖 Je suis LoanApply24Bot.\n"
-        f"Pour effectuer une demande ou utiliser les fonctions du bot, "
-        f"ouvrez-moi en privé : @LoanApply24Bot",
+        GROUP_TEXT[lang]["hello"].format(name=name),
         parse_mode="HTML",
     )
 
 
 async def group_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Aide minimale lorsqu'un membre appelle /help dans le groupe."""
-    message = update.effective_message
-    if not message:
-        return
-
-    await message.reply_text(
-        "🤖 LoanApply24Bot\n\n"
-        "Pour utiliser l'assistant, ouvrez @LoanApply24Bot en privé.\n"
-        "Les messages ordinaires du groupe ne déclenchent pas de réponse automatique."
+    user = update.effective_user
+    lang = _group_language(user)
+    await update.effective_message.reply_text(
+        GROUP_TEXT[lang]["help"],
+        parse_mode="HTML",
     )
 
+
+async def private_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    lang = _group_language(user)
+    texts = {
+        "fr": "🤖 <b>Aide LoanApply24Bot</b>\n\nUtilisez les boutons du menu pour accéder à votre profil, demander un prêt, suivre votre dossier, consulter votre prêt en cours, le parrainage, le support et la langue.\n\n🌐 Langues : Français, English, Español, Português.",
+        "en": "🤖 <b>LoanApply24Bot Help</b>\n\nUse the menu buttons to access your profile, apply for a loan, track your application, view your active loan, referrals, support and language settings.\n\n🌐 Languages: Français, English, Español, Português.",
+        "es": "🤖 <b>Ayuda de LoanApply24Bot</b>\n\nUsa los botones del menú para acceder a tu perfil, solicitar un préstamo, seguir tu solicitud, consultar tu préstamo activo, referidos, soporte e idioma.\n\n🌐 Idiomas: Français, English, Español, Português.",
+        "pt": "🤖 <b>Ajuda do LoanApply24Bot</b>\n\nUse os botões do menu para acessar seu perfil, solicitar um empréstimo, acompanhar sua solicitação, consultar seu empréstimo ativo, indicações, suporte e idioma.\n\n🌐 Idiomas: Français, English, Español, Português.",
+    }
+    await update.effective_message.reply_text(
+        texts.get(lang, texts["fr"]),
+        parse_mode="HTML",
+    )
+
+
+async def group_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Modération d'abord; si le message est autorisé, traiter une mention/réponse.
+    handled = await group_moderation(update, context)
+    if handled:
+        return
+    await group_assistant_trigger(update, context)
+
+
+async def group_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Modération de base : liens externes, invitations et spam.
+
+    Les administrateurs sont toujours exemptés. Après 3 infractions,
+    l'utilisateur est restreint 30 minutes. Les messages ordinaires restent
+    silencieux lorsqu'ils ne violent aucune règle.
+    """
+    message = update.effective_message
+    user = update.effective_user
+    chat = update.effective_chat
+    if not message or not user or not chat or chat.type not in ("group", "supergroup"):
+        return False
+
+    # Ne jamais modérer les administrateurs.
+    if user.id == ADMIN_ID:
+        return False
+    try:
+        member = await context.bot.get_chat_member(chat.id, user.id)
+        if member.status in ("administrator", "creator"):
+            return False
+    except Exception as exc:
+        print(f"⚠️ Vérification admin impossible: {exc}")
+        # En cas d'erreur API, on ne supprime pas le message par prudence.
+        return False
+
+    content = message.text or message.caption or ""
+    lower = content.lower()
+
+    # Autoriser explicitement les références au bot et au support officiel.
+    sanitized = re.sub(r"@loanapply24bot|@globalusdtfinance", "", lower)
+    has_link = bool(_GROUP_LINK_RE.search(sanitized))
+    has_spam = bool(_GROUP_SPAM_RE.search(sanitized))
+
+    if not (has_link or has_spam):
+        return False
+
+    lang = _group_language(user)
+    name = user.mention_html()
+    reason_key = "link_deleted" if has_link else "spam_deleted"
+
+    try:
+        await message.delete()
+    except Exception as exc:
+        print(f"⚠️ Suppression du message impossible: {exc}")
+        return False
+
+    warnings = context.chat_data.setdefault("moderation_warnings", {})
+    uid = str(user.id)
+    warnings[uid] = int(warnings.get(uid, 0)) + 1
+    count = warnings[uid]
+
+    # Message d'avertissement court; après 3 infractions, restriction automatique.
+    if count >= 3:
+        try:
+            await context.bot.restrict_chat_member(
+                chat_id=chat.id,
+                user_id=user.id,
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=datetime.now(timezone.utc) + timedelta(minutes=30),
+            )
+            await chat.send_message(
+                GROUP_TEXT[lang]["restricted"].format(name=name),
+                parse_mode="HTML",
+            )
+            warnings[uid] = 0
+            return True
+        except Exception as exc:
+            print(f"⚠️ Restriction impossible: {exc}")
+            return True
+    else:
+        try:
+            await chat.send_message(
+                GROUP_TEXT[lang][reason_key].format(name=name),
+                parse_mode="HTML",
+            )
+        except Exception as exc:
+            print(f"⚠️ Avertissement impossible: {exc}")
+        return True
+
+
+async def post_init(application):
+    """Expose /start, /help and /cancel in Telegram's bot command menu."""
+    await application.bot.set_my_commands([
+        ("start", "Start / Ouvrir le bot"),
+        ("help", "Help / Aide"),
+        ("conditions", "Loan conditions / Conditions"),
+        ("cancel", "Cancel / Annuler"),
+    ])
 
 def main():
 
@@ -4168,7 +4507,7 @@ def main():
     ensure_enterprise_schema()
 
     persistence = PicklePersistence(filepath=PERSISTENCE_PATH, update_interval=1)
-    application = Application.builder().token(TOKEN).persistence(persistence).connect_timeout(30).read_timeout(30).write_timeout(30).pool_timeout(30).build()
+    application = Application.builder().token(TOKEN).persistence(persistence).post_init(post_init).connect_timeout(30).read_timeout(30).write_timeout(30).pool_timeout(30).build()
 
     register_enterprise_handlers(application)
 
@@ -4329,8 +4668,7 @@ def main():
     # =========================
     application.add_handler(
         MessageHandler(
-            filters.ChatType.PRIVATE
-            & filters.Regex(
+            filters.ChatType.PRIVATE & filters.Regex(
                 r"^(📊 Suivi du dossier|📊 Application tracking|📊 Seguimiento de la solicitud|📊 Acompanhamento do pedido)$"
             ),
             loan_tracking,
@@ -4343,8 +4681,7 @@ def main():
 
     application.add_handler(
         MessageHandler(
-            filters.ChatType.PRIVATE
-            & filters.Regex(r"^(💳 Mon prêt en cours|💳 My active loan|💳 Mi préstamo activo|💳 Meu empréstimo ativo)$"),
+            filters.ChatType.PRIVATE & filters.Regex(r"^(💳 Mon prêt en cours|💳 My active loan|💳 Mi préstamo activo|💳 Meu empréstimo ativo)$"),
             my_loan
         )
     )
@@ -4375,14 +4712,13 @@ def main():
 
     application.add_handler(
         MessageHandler(
-            filters.ChatType.PRIVATE
-            & filters.Regex(r"^(🇫🇷 Français|🇬🇧 English|🇪🇸 Español|🇵🇹 Português)$"),
+            filters.ChatType.PRIVATE & filters.Regex(r"^(🇫🇷 Français|🇬🇧 English|🇪🇸 Español|🇵🇹 Português)$"),
             change_existing_language,
         )
     )
 
     # =========================
-    # GROUPE — BIENVENUE + ASSISTANCE EXPLICITE
+    # GROUPE — SILENCIEUX + AIDE + MODÉRATION
     # =========================
     application.add_handler(
         MessageHandler(
@@ -4390,22 +4726,31 @@ def main():
             group_welcome,
         )
     )
-
     application.add_handler(
-        CommandHandler(
-            "help",
-            group_help,
-            filters=filters.ChatType.GROUPS,
-        )
+        CommandHandler("help", group_help, filters=filters.ChatType.GROUPS),
     )
-
+    application.add_handler(
+        CommandHandler("help", private_help, filters=filters.ChatType.PRIVATE),
+    )
+    application.add_handler(
+        CommandHandler("conditions", group_conditions, filters=filters.ChatType.GROUPS),
+    )
+    application.add_handler(
+        CallbackQueryHandler(group_language_callback, pattern=r"^group_lang_(fr|en|es|pt)$"),
+    )
+    application.add_handler(
+        CallbackQueryHandler(group_terms_accept_callback, pattern=r"^group_terms_accept$"),
+    )
     application.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
-            group_assistant_trigger,
+            group_message_router,
         )
     )
 
+    # =========================
+    # PRIVÉ — TABLEAU DE BORD
+    # =========================
     application.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
