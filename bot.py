@@ -2793,6 +2793,13 @@ async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_awaiting(update.effective_user.id):
             await channel_admin_message(update, context)
             return
+    except: pass
+
+    try:
+        from channel_manager import is_awaiting, channel_admin_message
+        if is_awaiting(update.effective_user.id):
+            await channel_admin_message(update, context)
+            return
     except Exception as e:
         print(f'[CANAL] {e}')
 

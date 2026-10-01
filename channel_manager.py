@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-# --- SAFE IMPORT ---
 try:
     from config import CHANNEL_ID, CHANNEL_LINK
 except:
@@ -10,11 +8,9 @@ except:
     CHANNEL_LINK = "https://t.me/GLOBALUSDTFINANCE1"
 
 STATE_FILE = Path("/tmp/channel_state.json")
-
 def _load():
     try:
-        if STATE_FILE.exists():
-            return json.loads(STATE_FILE.read_text())
+        if STATE_FILE.exists(): return json.loads(STATE_FILE.read_text())
     except: pass
     return {}
 def _save(d):
@@ -28,8 +24,8 @@ def clear_awaiting(uid):
 
 async def channel_admin_menu(update, context):
     kb=[[InlineKeyboardButton("📢 Publier", callback_data="channel_publish")],
-        [InlineKeyboardButton("🔙 Retour Admin", callback_data="admin_back")]]
-    txt=f"📢 CANAL\n{CHANNEL_LINK}"
+        [InlineKeyboardButton("🔙 Retour", callback_data="admin_back")]]
+    txt=f"📢 CANAL {CHANNEL_LINK}"
     if update.callback_query:
         await update.callback_query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
     else:
@@ -56,8 +52,7 @@ async def channel_admin_message(update, context):
     uid=update.effective_user.id
     try: mode=context.user_data.get("channel_admin_mode")
     except: mode=None
-    if not is_awaiting(uid) and mode!="awaiting_custom":
-        return False
+    if not is_awaiting(uid) and mode!="awaiting_custom": return False
     txt=(update.message.text or "").strip()
     if not txt or txt.startswith("/cancel"):
         clear_awaiting(uid)
@@ -75,7 +70,7 @@ async def channel_admin_message(update, context):
         clear_awaiting(uid)
         try: context.user_data.pop("channel_admin_mode",None)
         except: pass
-        await update.message.reply_text(f"❌ Erreur: {e}")
+        await update.message.reply_text(f"❌ Erreur: {e}\nBot doit être admin dans le canal")
     return True
 
 async def publish_loan_request(bot, request_id: int): pass
