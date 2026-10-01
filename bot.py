@@ -4678,16 +4678,11 @@ def main():
     )
 
     
-    # FIX BOUTON CANAL - ORDRE IMPORTANT channel AVANT admin
-    
-    # --- REPAIR CANAL BOUTON - NE PAS TOUCHER ---
-    application.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^channel_|^admin_channel$"))
-    application.add_handler(CallbackQueryHandler(admin_callback, pattern=r"^admin_"))
-
-application.add_handler(
+    # --- GESTION DU CANAL ---
+    application.add_handler(
         CallbackQueryHandler(
-            admin_callback,
-            pattern=r"^admin_"
+            channel_callback,
+            pattern=r"^channel_|^admin_channel$"
         )
     )
 
