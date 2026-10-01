@@ -45,6 +45,7 @@ from telegram.ext import (
 
 from database import init_database, ensure_enterprise_schema
 from enterprise_features import register_enterprise_handlers
+from channel_manager import ensure_channel_schema, publish_loan_request, update_loan_post, channel_callback, channel_admin_message, restore_scheduled_posts
 
 
 ADMIN_ID = 8266012108
@@ -4063,6 +4064,10 @@ async def admin_disbursement_router(update, context):
     Sinon, le comportement normal du dashboard est conservé.
     """
     if update.effective_user and update.effective_user.id == ADMIN_ID:
+        if context.user_data.get("channel_admin_mode"):
+            await channel_admin_message(update, context)
+            return
+
         if context.user_data.get("admin_disbursement"):
             await admin_disbursement_message(update, context)
             return
@@ -4645,6 +4650,13 @@ def main():
     )
 
     application.add_handler(CommandHandler("admin", admin_panel))
+
+    application.add_handler(
+        CallbackQueryHandler(
+            channel_callback,
+            pattern=r"^admin_channel(?:_|$)"
+        )
+    )
 
     application.add_handler(
         CallbackQueryHandler(

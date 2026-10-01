@@ -65,6 +65,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("👥 Comptes", callback_data="admin_users")],
         [InlineKeyboardButton("🪪 KYC en attente", callback_data="admin_kyc")],
         [InlineKeyboardButton("💰 Demandes de prêt", callback_data="admin_loans")],
+        [InlineKeyboardButton("📢 Gestion du canal", callback_data="admin_channel")],
         [InlineKeyboardButton("🔔 Notifications client", callback_data="admin_notifications")],
     ])
 
