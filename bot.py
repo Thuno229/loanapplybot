@@ -4669,6 +4669,21 @@ def main():
         ],
     )
 
+    
+    # FIX BOUTON CANAL - ORDRE IMPORTANT channel AVANT admin
+    application.add_handler(
+        CallbackQueryHandler(
+            channel_callback,
+            pattern=r"^channel_|^admin_channel$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            admin_callback,
+            pattern=r"^admin_"
+        )
+    )
+
     application.add_handler(CommandHandler("admin", admin_panel))
 
     application.add_handler(
