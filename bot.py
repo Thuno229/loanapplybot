@@ -2787,6 +2787,7 @@ async def loan_current_callback(update: Update, context: ContextTypes.DEFAULT_TY
 # TABLEAU DE BORD
 # =========================
 
+from channel_manager import is_awaiting, channel_admin_message
 async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # FIX CANAL REPAIR
     try:
