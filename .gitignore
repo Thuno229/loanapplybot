@@ -8,3 +8,5 @@ __pycache__/
 *.before_data_*.bak
 *.before_schema_fix.bak
 *.before_final_fix.bak
+*.tar.gz
+bot_backup_*.py
