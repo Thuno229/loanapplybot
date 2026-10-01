@@ -1,3 +1,4 @@
+from employee_features import create_commission_for_loan
 from storage import DB_PATH
 import sqlite3
 from telegram.error import BadRequest
@@ -1139,6 +1140,59 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_loans(query)
             return
 
+        if data.startswith("admin_guarantee_validate:"):
+            request_id = int(data.split(":", 1)[1])
+
+            conn = db()
+            cur = conn.cursor()
+            cur.execute("SELECT telegram_id, guarantee, guarantee_status, txid FROM loan_requests WHERE id = ?", (request_id,))
+            row = cur.fetchone()
+
+            if not row:
+                conn.close()
+                await query.answer("❌ Demande introuvable.", show_alert=True)
+                return
+
+            telegram_id, guarantee, guarantee_status, txid = row
+            if not txid:
+                conn.close()
+                await query.answer("❌ Aucun TXID déclaré. Vérification impossible.", show_alert=True)
+                return
+
+            if str(guarantee_status or "").lower() in ("paid", "verified", "approved"):
+                conn.close()
+                await query.answer("ℹ️ Cette garantie est déjà validée.", show_alert=True)
+                return
+
+            cur.execute("UPDATE loan_requests SET guarantee_status = 'paid' WHERE id = ?", (request_id,))
+            commission_id = create_commission_for_loan(conn, request_id, telegram_id, float(guarantee or 0))
+
+            employee_id = None
+            employee_share = 0
+            company_share = 0
+
+            if commission_id:
+                cur.execute("SELECT employee_id, employee_share, company_share FROM employee_commissions WHERE id = ?", (commission_id,))
+                commission = cur.fetchone()
+                if commission:
+                    employee_id = int(commission[0])
+                    employee_share = float(commission[1] or 0)
+                    company_share = float(commission[2] or 0)
+                cur.execute("UPDATE employee_commissions SET status = 'available', available_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'", (commission_id,))
+
+            conn.commit()
+            conn.close()
+
+            if employee_id:
+                try:
+                    await context.bot.send_message(chat_id=employee_id, text=(f"🎉 Commission disponible\n\n💰 Garantie validée : {float(guarantee or 0):g} USDT\n👤 Votre part (50 %) : {employee_share:g} USDT\n🏢 Part entreprise (50 %) : {company_share:g} USDT\n\n✅ Votre commission est maintenant disponible."))
+                except Exception:
+                    pass
+
+            await query.answer("✅ Garantie validée.", show_alert=True)
+            await show_loan(query, request_id)
+            return
+
         if data.startswith("admin_loan:"):
             request_id = int(data.split(":", 1)[1])
             await show_loan(query, request_id)
@@ -1550,9 +1604,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 cur.execute(
                     """
-                    SELECT telegram_id, amount, repayment_period, status
-                    FROM loan_requests
-                    WHERE id = ?
+                    SELECT telegram_id, amount, guarantee, repayment_period, status
+        FROM loan_requests
+        WHERE id = ?
                     """,
                     (request_id,)
                 )
@@ -1566,7 +1620,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     conn.close()
                     return
 
-                telegram_id, amount, repayment_period, current_status = request
+                telegram_id, amount, guarantee, repayment_period, current_status = request
 
                 if str(current_status).lower() != "pending":
                     await query.answer("⚠️ Cette demande a déjà été traitée.", show_alert=True)

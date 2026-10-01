@@ -36,7 +36,8 @@ def ensure_employee_schema():
         note TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         available_at TIMESTAMP,
-        paid_at TIMESTAMP
+        paid_at TIMESTAMP,
+        loan_request_id INTEGER
     );
     CREATE TABLE IF NOT EXISTS client_confirmations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,8 +49,81 @@ def ensure_employee_schema():
         responded_at TIMESTAMP
     );
     """)
+    # Ajouter la colonne sur une installation existante
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(employee_commissions)").fetchall()]
+    if "loan_request_id" not in columns:
+        conn.execute("ALTER TABLE employee_commissions ADD COLUMN loan_request_id INTEGER")
+
     conn.commit()
     conn.close()
+
+
+def create_commission_for_loan(conn, loan_request_id, referred_id, guarantee_amount):
+    """Crée une commission en attente pour le prêt d'un filleul."""
+    if not referred_id or guarantee_amount <= 0:
+        return None
+
+    employee = conn.execute(
+        """
+        SELECT r.referrer_id
+        FROM referrals r
+        JOIN employees e ON e.telegram_id = r.referrer_id
+        WHERE r.referred_id = ?
+          AND r.status = 'completed'
+          AND e.active = 1
+        LIMIT 1
+        """,
+        (referred_id,),
+    ).fetchone()
+
+    if not employee:
+        return None
+
+    employee_id = employee[0]
+
+    existing = conn.execute(
+        """
+        SELECT id
+        FROM employee_commissions
+        WHERE loan_request_id = ?
+        LIMIT 1
+        """,
+        (loan_request_id,),
+    ).fetchone()
+
+    if existing:
+        return existing[0]
+
+    employee_share = round(guarantee_amount * 0.50, 8)
+    company_share = round(guarantee_amount * 0.50, 8)
+
+    cur = conn.execute(
+        """
+        INSERT INTO employee_commissions
+        (
+            employee_id,
+            referred_id,
+            base_amount,
+            employee_share,
+            company_share,
+            status,
+            note,
+            loan_request_id
+        )
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+        """,
+        (
+            employee_id,
+            referred_id,
+            guarantee_amount,
+            employee_share,
+            company_share,
+            "Garantie 15 %; partage 50/50; validation administrative requise.",
+            loan_request_id,
+        ),
+    )
+
+    return cur.lastrowid
 
 
 def is_admin(update):
@@ -379,6 +453,7 @@ async def client_confirmation_callback(update: Update, context: ContextTypes.DEF
 
 
 def employee_handlers():
+    ensure_employee_schema()
     return [
         CommandHandler("employe", employee_menu),
         CommandHandler("employe_add", employee_admin_commands),

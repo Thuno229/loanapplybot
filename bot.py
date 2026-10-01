@@ -2164,7 +2164,7 @@ async def bep20(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """
             INSERT OR IGNORE INTO referrals
             (referrer_id, referred_id, reward, status)
-            VALUES (?, ?, 5, 'pending')
+            VALUES (?, ?, 5, 'completed')
             """,
             (referred_by, user.id),
         )
