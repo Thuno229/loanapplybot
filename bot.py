@@ -2788,6 +2788,13 @@ async def loan_current_callback(update: Update, context: ContextTypes.DEFAULT_TY
 # =========================
 
 async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # FIX CANAL REPAIR
+    try:
+        if is_awaiting(update.effective_user.id):
+            await channel_admin_message(update, context)
+            return
+    except: pass
+
     try:
         from channel_manager import is_awaiting, channel_admin_message
         if is_awaiting(update.effective_user.id):
@@ -4671,13 +4678,12 @@ def main():
 
     
     # FIX BOUTON CANAL - ORDRE IMPORTANT channel AVANT admin
-    application.add_handler(
-        CallbackQueryHandler(
-            channel_callback,
-            pattern=r"^channel_|^admin_channel$"
-        )
-    )
-    application.add_handler(
+    
+    # --- REPAIR CANAL BOUTON - NE PAS TOUCHER ---
+    application.add_handler(CallbackQueryHandler(channel_callback, pattern=r"^channel_|^admin_channel$"))
+    application.add_handler(CallbackQueryHandler(admin_callback, pattern=r"^admin_"))
+
+application.add_handler(
         CallbackQueryHandler(
             admin_callback,
             pattern=r"^admin_"
@@ -4685,13 +4691,6 @@ def main():
     )
 
     application.add_handler(CommandHandler("admin", admin_panel))
-
-    application.add_handler(
-        CallbackQueryHandler(
-            channel_callback,
-            pattern=r"^admin_channel(?:_|$)"
-        )
-    )
 
     application.add_handler(
         CallbackQueryHandler(
