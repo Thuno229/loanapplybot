@@ -1,3 +1,4 @@
+from config import GROUP_ID, GROUP_LINK, CHANNEL_ID, CHANNEL_LINK
 from storage import DB_PATH, PERSISTENCE_PATH
 from dotenv import load_dotenv
 load_dotenv(override=True)
@@ -1539,6 +1540,80 @@ async def registration_resume_entry(update, context):
 # START
 # =========================
 
+async def check_join_requirements(context, user_id):
+    """Vérifie que l'utilisateur a rejoint le canal et le groupe obligatoires."""
+    async def is_member(chat_id):
+        try:
+            member = await context.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+            return member.status in ("member", "administrator", "creator") or (
+                member.status == "restricted" and getattr(member, "is_member", False)
+            )
+        except Exception as e:
+            print(f"⚠️ Vérification adhésion impossible ({chat_id}): {e}")
+            return False
+
+    channel_ok = await is_member(CHANNEL_ID)
+    group_ok = await is_member(GROUP_ID)
+
+    return channel_ok, group_ok
+
+
+def join_required_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📢 Rejoindre le canal", url=CHANNEL_LINK)],
+        [InlineKeyboardButton("👥 Rejoindre le groupe", url=GROUP_LINK)],
+        [InlineKeyboardButton("✅ J'ai rejoint — Vérifier", callback_data="join_verify")],
+    ])
+
+
+def join_required_text(lang):
+    texts = {
+        "fr": "🔒 Accès réservé\n\nVeuillez rejoindre notre canal et notre groupe, puis appuyez sur « ✅ J'ai rejoint — Vérifier ».",
+        "en": "🔒 Access required\n\nPlease join our channel and group, then press « ✅ I joined — Verify ».",
+        "es": "🔒 Acceso requerido\n\nÚnete a nuestro canal y grupo, luego pulsa « ✅ Me uní — Verificar ».",
+        "pt": "🔒 Acesso obrigatório\n\nEntre no nosso canal e grupo, depois pressione « ✅ Entrei — Verificar ».",
+    }
+    return texts.get(lang, texts["en"])
+
+
+async def join_verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+    lang = context.user_data.get("language", "en")
+
+    channel_ok, group_ok = await check_join_requirements(context, user_id)
+
+    if channel_ok and group_ok:
+        await query.edit_message_text(
+            "✅ Vérification réussie !\n\n"
+            "🎉 Vous avez rejoint le canal et le groupe."
+        )
+
+        context.user_data["terms_accepted"] = False
+
+        await show_registration_terms(query.message, lang)
+
+        return 1
+
+    missing = []
+
+    if not channel_ok:
+        missing.append("📢 canal")
+
+    if not group_ok:
+        missing.append("👥 groupe")
+
+    await query.edit_message_text(
+        join_required_text(lang)
+        + "\n\n❌ Il manque : "
+        + " et ".join(missing),
+        reply_markup=join_required_keyboard(),
+    )
+
+    return 1
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
@@ -1633,29 +1708,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # LANGUE
 # =========================
 
-async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    text = update.message.text
-
-    languages = {
-        "🇫🇷 Français": "fr",
-        "🇬🇧 English": "en",
-        "🇪🇸 Español": "es",
-        "🇵🇹 Português": "pt",
-    }
-
-    lang = languages.get(text)
-
-    if not lang:
-        await update.message.reply_text(
-            "🌐 Veuillez choisir une langue avec l’un des boutons ci-dessous.",
-            reply_markup=_registration_language_keyboard(),
-        )
-        return 1
-
-    context.user_data["language"] = lang
-    context.user_data["terms_accepted"] = False
-
+async def show_registration_terms(message, lang):
     terms = {
         "fr": (
             "📘 À PROPOS & CONDITIONS D’UTILISATION\n\n"
@@ -1776,6 +1829,7 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ),
     }
 
+
     buttons = {
         "fr": "✅ Je suis d’accord",
         "en": "✅ I agree",
@@ -1792,12 +1846,51 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     ])
 
-    await update.message.reply_text(
+    await message.reply_text(
         terms[lang],
         reply_markup=keyboard
     )
 
+
+async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    text = update.message.text
+
+    languages = {
+        "🇫🇷 Français": "fr",
+        "🇬🇧 English": "en",
+        "🇪🇸 Español": "es",
+        "🇵🇹 Português": "pt",
+    }
+
+    lang = languages.get(text)
+
+    if not lang:
+        await update.message.reply_text(
+            "🌐 Veuillez choisir une langue avec l’un des boutons ci-dessous.",
+            reply_markup=_registration_language_keyboard(),
+        )
+        return 1
+
+    context.user_data["language"] = lang
+    context.user_data["terms_accepted"] = False
+
+    channel_ok, group_ok = await check_join_requirements(
+        context,
+        update.effective_user.id
+    )
+
+    if not (channel_ok and group_ok):
+        await update.message.reply_text(
+            join_required_text(lang),
+            reply_markup=join_required_keyboard(),
+        )
+        return 1
+
+    await show_registration_terms(update.message, lang)
     return 1
+
+
 
 
 async def terms_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4302,6 +4395,7 @@ _GROUP_SPAM_RE = re.compile(
 
 
 async def group_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"📌 GROUP_ID = {update.effective_chat.id if update.effective_chat else None}")
     """Accueille les nouveaux membres et leur permet de choisir leur langue dans le groupe."""
     message = update.effective_message
     if not message or not message.new_chat_members:
@@ -4576,6 +4670,10 @@ def main():
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     choose_language
+                ),
+                CallbackQueryHandler(
+                    join_verify_callback,
+                    pattern=r"^join_verify$"
                 ),
                 CallbackQueryHandler(
                     terms_accept,
