@@ -1558,11 +1558,36 @@ async def check_join_requirements(context, user_id):
     return channel_ok, group_ok
 
 
-def join_required_keyboard():
+def join_required_keyboard(lang="fr"):
+    buttons = {
+        "fr": (
+            "📢 Rejoindre le canal",
+            "👥 Rejoindre le groupe",
+            "✅ J'ai rejoint — Vérifier",
+        ),
+        "en": (
+            "📢 Join channel",
+            "👥 Join group",
+            "✅ I joined — Verify",
+        ),
+        "es": (
+            "📢 Unirse al canal",
+            "👥 Unirse al grupo",
+            "✅ Me uní — Verificar",
+        ),
+        "pt": (
+            "📢 Entrar no canal",
+            "👥 Entrar no grupo",
+            "✅ Entrei — Verificar",
+        ),
+    }
+
+    channel_text, group_text, verify_text = buttons.get(lang, buttons["en"])
+
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📢 Rejoindre le canal", url=CHANNEL_LINK)],
-        [InlineKeyboardButton("👥 Rejoindre le groupe", url=GROUP_LINK)],
-        [InlineKeyboardButton("✅ J'ai rejoint — Vérifier", callback_data="join_verify")],
+        [InlineKeyboardButton(channel_text, url=CHANNEL_LINK)],
+        [InlineKeyboardButton(group_text, url=GROUP_LINK)],
+        [InlineKeyboardButton(verify_text, callback_data="join_verify")],
     ])
 
 
@@ -1586,10 +1611,26 @@ async def join_verify_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     channel_ok, group_ok = await check_join_requirements(context, user_id)
 
     if channel_ok and group_ok:
-        await query.edit_message_text(
-            "✅ Vérification réussie !\n\n"
-            "🎉 Vous avez rejoint le canal et le groupe."
-        )
+        success_texts = {
+            "fr": (
+                "✅ Vérification réussie !\n\n"
+                "🎉 Vous avez rejoint le canal et le groupe."
+            ),
+            "en": (
+                "✅ Verification successful!\n\n"
+                "🎉 You have joined the channel and group."
+            ),
+            "es": (
+                "✅ ¡Verificación exitosa!\n\n"
+                "🎉 Te has unido al canal y al grupo."
+            ),
+            "pt": (
+                "✅ Verificação concluída!\n\n"
+                "🎉 Você entrou no canal e no grupo."
+            ),
+        }
+
+        await query.edit_message_text(success_texts.get(lang, success_texts["en"]))
 
         context.user_data["terms_accepted"] = False
 
@@ -1599,17 +1640,38 @@ async def join_verify_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     missing = []
 
+    missing_labels = {
+        "fr": ("📢 canal", "👥 groupe", " et "),
+        "en": ("📢 channel", "👥 group", " and "),
+        "es": ("📢 canal", "👥 grupo", " y "),
+        "pt": ("📢 canal", "👥 grupo", " e "),
+    }
+
+    channel_label, group_label, separator = missing_labels.get(
+        lang, missing_labels["en"]
+    )
+
     if not channel_ok:
-        missing.append("📢 canal")
+        missing.append(channel_label)
 
     if not group_ok:
-        missing.append("👥 groupe")
+        missing.append(group_label)
+
+    missing_text = separator.join(missing)
+
+    missing_prefix = {
+        "fr": "❌ Il manque : ",
+        "en": "❌ Missing: ",
+        "es": "❌ Falta: ",
+        "pt": "❌ Falta: ",
+    }
 
     await query.edit_message_text(
         join_required_text(lang)
-        + "\n\n❌ Il manque : "
-        + " et ".join(missing),
-        reply_markup=join_required_keyboard(),
+        + "\n\n"
+        + missing_prefix.get(lang, missing_prefix["en"])
+        + missing_text,
+        reply_markup=join_required_keyboard(lang),
     )
 
     return 1
@@ -1883,7 +1945,7 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not (channel_ok and group_ok):
         await update.message.reply_text(
             join_required_text(lang),
-            reply_markup=join_required_keyboard(),
+            reply_markup=join_required_keyboard(lang),
         )
         return 1
 
