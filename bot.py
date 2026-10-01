@@ -2788,6 +2788,14 @@ async def loan_current_callback(update: Update, context: ContextTypes.DEFAULT_TY
 # =========================
 
 async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        from channel_manager import is_awaiting, channel_admin_message
+        if is_awaiting(update.effective_user.id):
+            await channel_admin_message(update, context)
+            return
+    except Exception as e:
+        print(f'[CANAL] {e}')
+
     if context.user_data.get("awaiting_network"):
         await update.message.reply_text(
             _bt(update, "network_select")

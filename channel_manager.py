@@ -1,98 +1,71 @@
-import logging
-logger = logging.getLogger(__name__)
-
-CHANNEL_USERNAME = "@GLOBALUSDTFINANCE1"
-CHANNEL_ID = None
-
-def ensure_channel_schema():
-    try:
-        from database import get_db_connection
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS channel_config (id INTEGER PRIMARY KEY, channel_id TEXT, channel_username TEXT, enabled INTEGER DEFAULT 1)")
-        cur.execute("CREATE TABLE IF NOT EXISTS channel_posts (id INTEGER PRIMARY KEY AUTOINCREMENT, loan_request_id INTEGER, message_id INTEGER, channel_id TEXT, status TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        cur.execute("SELECT id FROM channel_config LIMIT 1")
-        if not cur.fetchone():
-            cur.execute("INSERT INTO channel_config (channel_id, channel_username, enabled) VALUES (?,?,1)", (str(CHANNEL_ID or CHANNEL_USERNAME), CHANNEL_USERNAME))
-        conn.commit()
-        conn.close()
-        logger.info("📢 Module Canal Telegram activé.")
-    except Exception as e:
-        logger.error(f"Canal schema skip: {e}")
-
-# Fonctions vides qui ne plantent jamais au démarrage
-async def publish_loan_request(bot, request_id: int):
-    logger.info(f"[Canal] publish_loan_request {request_id} skipped (safe mode)")
-
-async def update_loan_post(bot, request_id: int, new_status: str):
+import json, os
+from pathlib import Path
+try:
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+except:
     pass
 
-async def restore_scheduled_posts(bot=None):
-    logger.info("Canal: restore OK")
+STATE_FILE = Path("/tmp/channel_state.json")
 
-async def channel_admin_message(update, context):
+def _load():
+    try:
+        if STATE_FILE.exists():
+            return json.loads(STATE_FILE.read_text())
+    except: pass
+    return {}
+
+def _save(d):
+    try: STATE_FILE.write_text(json.dumps(d))
+    except: pass
+
+def is_awaiting(uid):
+    return str(uid) in _load()
+
+def set_awaiting(uid):
+    d=_load(); d[str(uid)]="awaiting"; _save(d)
+
+def clear_awaiting(uid):
+    d=_load(); d.pop(str(uid),None); _save(d)
+
+async def channel_admin_menu(update, context):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    text = update.message.text if update.message else ""
-    mode = context.user_data.get("channel_admin_mode")
-    if mode == "awaiting_custom":
-        try:
-            await context.bot.send_message(chat_id=CHANNEL_USERNAME, text=f"📢 {text}")
-            await update.message.reply_text(f"✅ Publié dans {CHANNEL_USERNAME}")
-        except Exception as e:
-            await update.message.reply_text(f"❌ Erreur: {e}\nVérifie que le bot est ADMIN dans {CHANNEL_USERNAME}")
-        context.user_data["channel_admin_mode"] = None
+    from config import CHANNEL_ID, CHANNEL_LINK
+    kb=[[InlineKeyboardButton("📢 Publier", callback_data="channel_publish")],
+        [InlineKeyboardButton("🔙 Retour Admin", callback_data="admin_back")]]
+    text=f"📢 Canal: {CHANNEL_LINK}\nID: {CHANNEL_ID}"
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
     else:
-        await update.message.reply_text("Utilise /admin > Gestion du canal")
-
-def get_channel_keyboard():
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📢 Publier", callback_data="admin_channel_publish")],
-        [InlineKeyboardButton("📅 Programmer", callback_data="admin_channel_program")],
-        [InlineKeyboardButton("📂 Publications", callback_data="admin_channel_list")],
-        [InlineKeyboardButton("📊 Statistiques", callback_data="admin_channel_stats")],
-        [InlineKeyboardButton("↩️ Panneau admin", callback_data="admin_panel")],
-    ])
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
 
 async def channel_callback(update, context):
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    query = update.callback_query
-    await query.answer()
-    data = query.data
+    q=update.callback_query
+    await q.answer()
+    uid=q.from_user.id
+    if q.data=="channel_publish":
+        set_awaiting(uid)
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        await q.edit_message_text("✍️ Envoie maintenant le texte à publier.\n/cancel pour annuler", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler", callback_data="admin_channel")]]))
+    else:
+        clear_awaiting(uid)
+        from admin_manager import admin_panel
+        await admin_panel(update, context)
 
+async def channel_admin_message(update, context):
+    uid=update.effective_user.id
+    if not is_awaiting(uid):
+        return False
+    txt=(update.message.text or "").strip()
+    if not txt or txt.startswith("/"):
+        clear_awaiting(uid)
+        await update.message.reply_text("❌ Annulé")
+        return True
     try:
-        from config import ADMIN_IDS
-        if update.effective_user.id not in ADMIN_IDS:
-            await query.answer("Non autorisé", show_alert=True)
-            return
-    except:
-        pass
-
-    if data == "admin_channel":
-        ensure_channel_schema()
-        txt = f"📢 GESTION DU CANAL\n\nCanal : {CHANNEL_USERNAME}\nChoisissez une action :"
-        try:
-            await query.edit_message_text(txt, reply_markup=get_channel_keyboard())
-        except:
-            await query.message.reply_text(txt, reply_markup=get_channel_keyboard())
-        return
-
-    if data == "admin_channel_publish":
-        context.user_data["channel_admin_mode"] = "awaiting_custom"
-        await query.edit_message_text(
-            f"Canal : {CHANNEL_USERNAME}\n\n✍️ Envoie maintenant le texte que tu veux publier.\n/cancel pour annuler.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Annuler", callback_data="admin_channel")]])
-        )
-        return
-
-    if data == "admin_channel_program":
-        await query.edit_message_text("📅 Programmation bientôt.", reply_markup=get_channel_keyboard())
-        return
-
-    if data == "admin_channel_list":
-        await query.edit_message_text("📂 Aucune publication (mode safe).", reply_markup=get_channel_keyboard())
-        return
-
-    if data == "admin_channel_stats":
-        await query.edit_message_text(f"📊 Canal {CHANNEL_USERNAME}\n✅ Actif (mode safe)", reply_markup=get_channel_keyboard())
-        return
+        from config import CHANNEL_ID, CHANNEL_LINK
+        await context.bot.send_message(chat_id=CHANNEL_ID, text=txt)
+        clear_awaiting(uid)
+        await update.message.reply_text(f"✅ Publié dans {CHANNEL_LINK}")
+    except Exception as e:
+        clear_awaiting(uid)
+        await update.message.reply_text(f"❌ Erreur: {e}\nVérifie que le bot est admin dans le canal.")
+    return True
