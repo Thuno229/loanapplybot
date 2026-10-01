@@ -3,6 +3,7 @@ import os
 import sqlite3
 from i18n import tr
 from database import record_loan_stage
+from channel_manager import publish_loan_request
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, CopyTextButton
 
 ADMIN_ID = 8266012108
@@ -97,6 +98,20 @@ async def loan_confirm_callback(update, context):
     )
     conn.commit()
     conn.close()
+
+    # =========================
+    # PUBLICATION AUTOMATIQUE DANS LE CANAL
+    # =========================
+    try:
+        await publish_loan_request(
+            context.bot,
+            request_id,
+            amount,
+            duration,
+            network,
+        )
+    except Exception as e:
+        print(f"❌ Publication canal impossible : {e}")
 
     # =========================
     # NOTIFICATION AUTOMATIQUE ADMIN

@@ -53,6 +53,17 @@ async def channel_admin_message(update, context):
         await update.message.reply_text(f"❌ Erreur: {e}")
     return True
 def ensure_channel_schema(): pass
-async def publish_loan_request(a,b): pass
+async def publish_loan_request(bot, request_id, amount, duration, network):
+    text = (
+        "📢 NOUVELLE DEMANDE DE PRÊT\n\n"
+        f"🆔 Demande : #{request_id}\n"
+        f"💰 Montant demandé : {amount:g} USDT\n"
+        f"📅 Durée : {duration} mois\n"
+        f"🌐 Réseau : {network}\n"
+        "📌 Statut : EN ATTENTE\n\n"
+        "⚠️ Demande soumise à vérification et approbation manuelle."
+    )
+    await bot.send_message(chat_id=CHANNEL_ID, text=text)
+
 async def update_loan_post(a,b,c): pass
 async def restore_scheduled_posts(a=None): pass

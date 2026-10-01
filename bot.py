@@ -1,6 +1,6 @@
 from storage import DB_PATH, PERSISTENCE_PATH
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
 from datetime import timezone, timedelta
 import sqlite3
@@ -45,8 +45,23 @@ from telegram.ext import (
 
 from database import init_database, ensure_enterprise_schema
 from enterprise_features import register_enterprise_handlers
-from channel_manager import ensure_channel_schema, publish_loan_request, update_loan_post, channel_callback, channel_admin_message, restore_scheduled_posts
+from channel_manager import ensure_channel_schema, publish_loan_request, update_loan_post, channel_callback, channel_admin_message, restore_scheduled_posts, is_awaiting
 
+
+# --- FILTRE PUBLICATION CANAL ---
+class ChannelAwaitingFilter(filters.MessageFilter):
+    def filter(self, message):
+        try:
+            return bool(
+                message.from_user
+                and message.chat
+                and message.chat.type == "private"
+                and is_awaiting(message.from_user.id)
+            )
+        except Exception:
+            return False
+
+channel_awaiting_filter = ChannelAwaitingFilter()
 
 ADMIN_ID = 8266012108
 
@@ -4697,9 +4712,10 @@ def main():
 
 
     # --- PUBLICATION DIRECTE DANS LE CANAL ---
+    # Ce handler ne s'active que si une publication canal est réellement attendue.
     application.add_handler(
         MessageHandler(
-            filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+            channel_awaiting_filter & filters.TEXT & ~filters.COMMAND,
             channel_admin_message
         )
     )
