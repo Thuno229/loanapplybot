@@ -4696,6 +4696,14 @@ def main():
     )
 
 
+    # --- PUBLICATION DIRECTE DANS LE CANAL ---
+    application.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+            channel_admin_message
+        )
+    )
+
     application.add_handler(registration)
 
     application.add_handler(
