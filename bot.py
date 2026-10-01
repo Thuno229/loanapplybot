@@ -972,6 +972,11 @@ def _bt(update, key, **kwargs):
 
 async def change_existing_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Change the saved language for an already registered client."""
+    # --- CANAL PRIORITAIRE ---
+    if context.user_data.get("channel_admin_mode"):
+        from channel_manager import channel_admin_message
+        await channel_admin_message(update, context)
+        return
     user_id = update.effective_user.id
     mapping = {
         "🇫🇷 Français": "fr",
