@@ -1,0 +1,11 @@
+
+# --- CANAL ---
+try:
+    CHANNEL_ID
+except NameError:
+    CHANNEL_ID = "@GLOBALUSDTFINANCE1"
+    CHANNEL_LINK = "https://t.me/GLOBALUSDTFINANCE1"
+
+# --- GROUPE OBLIGATOIRE ---
+GROUP_ID = -1003887425706
+GROUP_LINK = "https://t.me/EzUSHTK_M5ZmNmM0"

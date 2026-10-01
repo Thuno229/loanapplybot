@@ -1,0 +1,46 @@
+*.zip
+*.db
+*.pkl
+__pycache__/
+*.pyc
+*.backup*
+.env
+*.before_data_*.bak
+*.before_schema_fix.bak
+*.before_final_fix.bak
+*.tar.gz
+bot_backup_*.py
+
+# Secrets et variables d'environnement
+.env
+.env.*
+!.env.example
+
+# Données locales / utilisateurs
+*.db
+*.sqlite
+*.sqlite3
+*.pkl
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Sauvegardes
+*.bak
+*.backup*
+*.before*
+*.BEFORE*
+*_backup*.py
+*backup*.py
+
+# Archives
+*.zip
+*.tar.gz
+
+# Anciennes versions du code
+*.avant_*
+*.erreur_*
+backups/
