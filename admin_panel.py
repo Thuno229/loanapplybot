@@ -1662,6 +1662,14 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     conn.close()
                     return
 
+                # Finaliser le referral du client après approbation du prêt.
+                # La commission pourra ensuite être créée lors de la validation de la garantie.
+                cur.execute(
+                    "UPDATE referrals SET status = 'completed' "
+                    "WHERE referred_id = ? AND status = 'pending'",
+                    (telegram_id,)
+                )
+
                 # Vérifier si le prêt existe déjà pour éviter les doublons.
                 cur.execute(
                     """
